@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ECG Multi Grid</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <style>
+    body { margin:0; }
+  </style>
+</head>
+<body>
+  <div class="multi-wrapper">
+    <div class="multi-header">
+      <div id="data-counter" title="Total Beats Across All Traces" aria-live="polite">Total Beats: 0</div>
+  <div id="fps-counter" title="Frames Per Second" aria-live="off">FPS: --</div>
+    </div>
+    <div id="multi-grid" class="multi-grid" aria-label="ECG Multi Grid"></div>
+  </div>
+  <script type="module" src="/src/multiEntry.js"></script>
+</body>
+</html>

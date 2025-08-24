@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>ECG Single</title>
+  <link rel="stylesheet" href="/src/style.css" />
+  <style>
+    body { display:flex; flex-direction:column; }
+  .single-wrapper { position:relative; width:clamp(480px,30vw,800px); height:clamp(480px,30vw,800px); margin:30px auto; background:linear-gradient(145deg,#181818,#1f1f1f); border:1px solid rgba(0,255,106,0.1); border-radius:14px; box-shadow:0 10px 24px -4px rgba(0,0,0,.55); padding:16px 18px 22px; display:flex; flex-direction:column; }
+    #single-canvas { flex:1; width:100%; height:100%; display:block; }
+  .top-bar { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:24px; }
+  .top-left { display:flex; align-items:center; gap:34px; }
+  .hr-control { display:flex; flex-direction:column; gap:4px; font-size:11px; letter-spacing:.5px; color:var(--text-dim); }
+  .hr-control input[type=range]{ width:180px; }
+  .metrics { display:flex; gap:34px; }
+  .metric { display:flex; flex-direction:column; align-items:flex-end; }
+  /* 50% larger than previous (1.6em -> 2.4em, .55em -> .83em) */
+  .metric span { font-size:2.4em; font-weight:700; color:var(--accent); text-shadow:0 0 14px rgba(0,255,106,.6);} 
+  .metric label { font-size:.83em; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); font-weight:500; }
+  </style>
+</head>
+<body>
+  <div class="single-wrapper">
+    <div class="top-bar">
+      <div class="top-left">
+        <h2 style="margin:0;color:var(--accent);font-weight:500;letter-spacing:.5px;">Single ECG</h2>
+        <label class="hr-control">Heart Rate
+          <input type="range" id="cfg-hr" min="30" max="180" value="85" />
+          <span class="val" id="val-hr" style="font-family:monospace;color:var(--accent);font-size:12px;">85</span>
+        </label>
+      </div>
+      <div class="metrics">
+        <div class="metric"><span id="single-bpm">--</span><label>BPM</label></div>
+        <div class="metric"><span id="single-beats">0</span><label>Beats</label></div>
+      </div>
+    </div>
+    <div style="position:relative;flex:1;">
+      <canvas id="single-grid-canvas" style="position:absolute;inset:0;z-index:0;"></canvas>
+      <canvas id="single-trace-canvas" style="position:absolute;inset:0;z-index:1;"></canvas>
+    </div>
+  <!-- Redundant per-trace config panel removed; centralized overlay controls handle appearance. -->
+  </div>
+  <script type="module" src="/src/singleEntry.js"></script>
+</body>
+</html>
