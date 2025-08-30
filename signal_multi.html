@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Signal Multi</title>
+    <title>Signal Multi</title>
+    <link rel="stylesheet" href="/src/style.css" />
     <style>
         /* Base styles */
         * {
@@ -27,10 +28,6 @@
             background: #0d0d0d;
         }
     </style>
-  <script type="module" crossorigin src="/assets/signal_multi-DMnEfdGY.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/assets/signalBatchRenderer-E0200ibZ.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
 </head>
 <body>
     <div id="data-counter" class="header-counter" title="Total Pulses" aria-live="polite">
@@ -38,7 +35,8 @@
       <span class="counter-value">0</span>
     </div>
     <div id="container"></div>
-
+
+    <script type="module" src="/src/signalMultiEntry.js"></script>
     <script>
         // Global reference to the signal multi instance
         let signalMultiInstance = null;

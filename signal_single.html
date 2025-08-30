@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Signal Single</title>
+  <title>Signal Single</title>
+  <link rel="stylesheet" href="/src/style.css" />
   <style>
     body { display:flex; flex-direction:column; }
     .main-container { 
@@ -187,11 +188,6 @@
       line-height: 1;
     }
   </style>
-  <script type="module" crossorigin src="/assets/signal_single-BMQETDcd.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/assets/signalBatchRenderer-E0200ibZ.js">
-  <link rel="modulepreload" crossorigin href="/assets/overlayControls_new-CZkq1nvp.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
 </head>
 <body>
   <div class="main-container">
@@ -315,6 +311,7 @@
         <div class="total-pulses-counter" id="single-pulses">0</div>
       </div>
     </div>
-  </div>
+  </div>
+  <script type="module" src="/src/signalSingleEntry.js"></script>
 </body>
 </html>

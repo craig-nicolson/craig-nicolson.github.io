@@ -3,7 +3,8 @@
 <head>  <!-- Redundant per-trace config panel removed; centralized overlay controls handle appearance. -->
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ECG Single</title>
+  <title>ECG Single</title>
+  <link rel="stylesheet" href="/src/style.css" />
   <style>
     body { display:flex; flex-direction:column; }
     .single-wrapper { position:relative; width:min(65vw, 800px); height:min(85vh, 600px); min-width:400px; min-height:300px; margin:30px auto; background:linear-gradient(145deg,#181818,#1f1f1f); border:1px solid rgba(0,255,106,0.1); border-radius:14px; box-shadow:0 10px 24px -4px rgba(0,0,0,.55); padding:12px; display:flex; flex-direction:column; }
@@ -18,10 +19,6 @@
   .metric span { font-size:2.4em; font-weight:700; color:var(--accent); text-shadow:0 0 14px rgba(0,255,106,.6);} 
   .metric label { font-size:.83em; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); font-weight:500; }
   </style>
-  <script type="module" crossorigin src="/assets/single-BJjp-RKy.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/assets/overlayControls_new-CZkq1nvp.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
 </head>
 <body>
   <div class="single-wrapper">
@@ -43,6 +40,7 @@
       <canvas id="single-trace-canvas" style="position:absolute;inset:0;z-index:1;"></canvas>
     </div>
   <!-- Redundant per-trace config panel removed; centralized overlay controls handle appearance. -->
-  </div>
+  </div>
+  <script type="module" src="/src/ecgSingleEntry.js"></script>
 </body>
 </html>

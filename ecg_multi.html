@@ -3,20 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>ECG Multi Grid</title>
+  <title>ECG Multi Grid</title>
+  <link rel="stylesheet" href="/src/style.css" />
   <style>
     body { margin:0; }
   </style>
-  <script type="module" crossorigin src="/assets/multi-Dxlj9wFW.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-B5Qt9EMX.js">
-  <link rel="modulepreload" crossorigin href="/assets/overlayControls_new-CZkq1nvp.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
 </head>
 <body>
   <div id="multi-grid" class="multi-grid-fullscreen" aria-label="ECG Multi Grid"></div>
   <div id="data-counter" class="header-counter" title="Total Beats Across All Traces" aria-live="polite">
     <span class="counter-label">Total Beats:</span>
     <span class="counter-value" id="total-beats">0</span>
-  </div>
+  </div>
+  <script type="module" src="/src/ecgMultiEntry.js"></script>
 </body>
 </html>
