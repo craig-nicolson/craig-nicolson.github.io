@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>  <!-- Redundant per-trace config panel removed; centralized overlay controls handle appearance. -->
+<head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ECG Single</title>
@@ -15,13 +15,13 @@
   .metrics { display:flex; gap:34px; }
   .metric { display:flex; flex-direction:column; align-items:flex-end; }
   /* 50% larger than previous (1.6em -> 2.4em, .55em -> .83em) */
-  .metric span { font-size:2.4em; font-weight:700; color:var(--accent); text-shadow:0 0 14px rgba(0,255,106,.6);} 
+  .metric span { font-size:2.4em; font-weight:700; color:var(--accent); text-shadow:0 0 14px rgba(0,255,106,.6);}
   .metric label { font-size:.83em; text-transform:uppercase; letter-spacing:1.2px; color:var(--text-dim); font-weight:500; }
   </style>
-  <script type="module" crossorigin src="/assets/single-BSlg3p89.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/overlayControls_new-C67KsuMk.js">
-  <link rel="modulepreload" crossorigin href="/assets/color-8XwccIkK.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
+  <script type="module" crossorigin src="/assets/single-BNerFSOW.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/overlayControls-BYAzFYj-.js">
+  <link rel="modulepreload" crossorigin href="/assets/color-1P8gJ9uY.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-DwQeCNsM.css">
 </head>
 <body>
   <div class="single-wrapper">
@@ -42,7 +42,6 @@
       <canvas id="single-grid-canvas" style="position:absolute;inset:0;z-index:0;"></canvas>
       <canvas id="single-trace-canvas" style="position:absolute;inset:0;z-index:1;"></canvas>
     </div>
-  <!-- Redundant per-trace config panel removed; centralized overlay controls handle appearance. -->
   </div>
 </body>
 </html>

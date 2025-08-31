@@ -4,41 +4,18 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Signal Multi</title>
-    <style>
-        /* Base styles */
-        * {
-            box-sizing: border-box;
-        }
-
-        body {
-            margin: 0;
-            padding: 0;
-            background: var(--bg);
-            font-family: 'Roboto', system-ui, -apple-system, sans-serif;
-            overflow: hidden;
-        }
-
-        #container {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            background: #0d0d0d;
-        }
-    </style>
-  <script type="module" crossorigin src="/assets/signal_multi-CIK8xkxR.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/overlayControls_new-C67KsuMk.js">
+  <script type="module" crossorigin src="/assets/signal_multi-DJDPFzT0.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/overlayControls-BYAzFYj-.js">
   <link rel="modulepreload" crossorigin href="/assets/signalSquare-CzoGnx3u.js">
-  <link rel="modulepreload" crossorigin href="/assets/signalBatchRenderer-CiFqqyGQ.js">
-  <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
+  <link rel="modulepreload" crossorigin href="/assets/signalBatchRenderer-DOaJURxi.js">
+  <link rel="stylesheet" crossorigin href="/assets/style-DwQeCNsM.css">
 </head>
-<body>
+<body class="signal-multi-body">
     <div id="data-counter" class="header-counter" title="Total Pulses" aria-live="polite">
       <span class="counter-label">Total Pulses:</span>
       <span class="counter-value">0</span>
     </div>
-    <div id="container"></div>
+    <div id="container" class="signal-multi-container"></div>
 
     <script>
         // Global reference to the signal multi instance

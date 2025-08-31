@@ -4,19 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Data Visualization</title>
-    <link rel="stylesheet" crossorigin href="/assets/style-D5Q70Bhz.css">
+    <link rel="stylesheet" crossorigin href="/assets/style-DwQeCNsM.css">
   </head>
   <body>
-    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;gap:32px;font-family:Roboto,system-ui,sans-serif;">
-      <h1 style="color:var(--accent);font-weight:500;letter-spacing:.5px;text-shadow:0 0 10px rgba(0,255,106,.4);">Data Visualization Demo</h1>
-      <div style="display:flex;gap:34px;flex-wrap:wrap;justify-content:center;">
-        <a href="/ecg_single.html" style="padding:14px 26px;border:1px solid rgba(0,255,106,0.4);border-radius:10px;text-decoration:none;color:var(--accent);font-weight:600;letter-spacing:.5px;box-shadow:0 0 14px -2px rgba(0,255,106,.45) inset,0 0 10px rgba(0,255,106,.35);background:linear-gradient(145deg,#1b1b1b,#141414);">ECG Single</a>
-        <a href="/ecg_multi.html" style="padding:14px 26px;border:1px solid rgba(0,255,106,0.4);border-radius:10px;text-decoration:none;color:var(--accent);font-weight:600;letter-spacing:.5px;box-shadow:0 0 14px -2px rgba(0,255,106,.45) inset,0 0 10px rgba(0,255,106,.35);background:linear-gradient(145deg,#1b1b1b,#141414);">ECG Multi</a>
-        <a href="/signal_single.html" style="padding:14px 26px;border:1px solid rgba(255,106,0,0.4);border-radius:10px;text-decoration:none;color:#ff6a00;font-weight:600;letter-spacing:.5px;box-shadow:0 0 14px -2px rgba(255,106,0,.45) inset,0 0 10px rgba(255,106,0,.35);background:linear-gradient(145deg,#1b1b1b,#141414);">Signal Single</a>
-        <a href="/signal_multi.html" style="padding:14px 26px;border:1px solid rgba(255,106,0,0.4);border-radius:10px;text-decoration:none;color:#ff6a00;font-weight:600;letter-spacing:.5px;box-shadow:0 0 14px -2px rgba(255,106,0,.45) inset,0 0 10px rgba(255,106,0,.35);background:linear-gradient(145deg,#1b1b1b,#141414);">Signal Multi</a>
-        <a href="/data-calculator.html" style="padding:14px 26px;border:1px solid rgba(0,150,255,0.4);border-radius:10px;text-decoration:none;color:#0096ff;font-weight:600;letter-spacing:.5px;box-shadow:0 0 14px -2px rgba(0,150,255,.45) inset,0 0 10px rgba(0,150,255,.35);background:linear-gradient(145deg,#1b1b1b,#141414);">Data Calculator</a>
+    <div class="landing-page flex-column flex-center">
+      <h1 class="landing-header">Data Visualization Demo</h1>
+      <div class="landing-nav flex-wrap">
+        <a href="/ecg_single.html" class="btn-primary btn-ecg">ECG Single</a>
+        <a href="/ecg_multi.html" class="btn-primary btn-ecg">ECG Multi</a>
+        <a href="/signal_single.html" class="btn-primary btn-signal">Signal Single</a>
+        <a href="/signal_multi.html" class="btn-primary btn-signal">Signal Multi</a>
+        <a href="/data-calculator.html" class="btn-primary btn-data">Data Calculator</a>
       </div>
-      <p style="max-width:560px;line-height:1.5;font-size:.85rem;color:var(--text-dim);text-align:center;margin:0 18px;">Select a visualization mode. <strong style="color:var(--accent);">ECG modes</strong> display animated electrocardiogram traces with detailed controls. <strong style="color:#ff6a00;">Signal modes</strong> display Three.js-based signal visualizations with different rendering approaches. <strong style="color:#0096ff;">Data Calculator</strong> provides real-time data accumulation metrics and signal visualization tools.</p>
+      <p class="landing-description">
+        Select a visualization mode.
+        <strong class="btn-ecg">ECG modes</strong> display animated electrocardiogram traces with detailed controls.
+        <strong class="btn-signal">Signal modes</strong> display Three.js-based signal visualizations with different rendering approaches.
+        <strong class="btn-data">Data Calculator</strong> provides real-time data accumulation metrics and signal visualization tools.
+      </p>
     </div>
   </body>
 </html>

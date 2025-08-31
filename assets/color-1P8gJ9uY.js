@@ -25,8 +25,6 @@ uniform float u_lineHalfWidth; // varies per pass
 uniform bool u_isHeadPass; // minimal head dot pass flag
 uniform bool u_t_flipY;
 uniform float u_noiseAmp; // micro jitter amplitude (pixels)
-// (debug point uniform removed)
-// (debug uniforms removed)
 out float v_alpha;
 out float v_side;
 out float v_t;
@@ -65,7 +63,6 @@ void main(){
     if(a_t < e){ float k=a_t/e; a*=k*k; }
     else if(a_t > 1.0 - e){ float k=(1.0 - a_t)/e; a*=k*k; }
   }
-  // Layer attenuation & debug force-alpha removed for simplicity
   v_alpha = a;
   v_side = a_side;
   v_t = a_t;
@@ -130,7 +127,6 @@ void main(){
     float pulse = (v_head < 0.12) ? (1.0 - (v_head/0.12)) : 0.0;
     gl_PointSize = u_lineHalfWidth * 6.0 * (1.0 + 0.6*pulse);
   }
-  // point size debug removed
 }`,ht=`#version 300 es
 precision highp float;
 in float v_alpha;
