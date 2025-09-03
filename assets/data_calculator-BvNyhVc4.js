@@ -22,7 +22,7 @@ const l = {
   "Internal: Signal B Offset": 50,
   "Internal: Signal CF Offsets": [.15, .3, .45, .6],
   "Internal: Signal CF Individual Offsets": [150, 300, 450, 600],
-  "Internal: Showcase Start Date": new Date(2025, 8, 4, 0, 30, 0),
+  "Internal: Showcase Start Date": new Date(2025, 8, 4, 13, 30, 0),
   "Internal: All Time Start Date": new Date(2024, 9, 1, 0, 0, 0),
 };
 
