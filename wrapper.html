@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>All Visualizations</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+        }
+        .slider-wrapper {
+            width: 100vw;
+            height: 100vh;
+            overflow: hidden;
+            position: relative;
+        }
+        .slider-container {
+            display: flex;
+            width: 500vw; /* 5 * 100vw */
+            height: 100vh;
+            transition: transform 0.3s ease;
+        }
+        iframe {
+            width: 100vw;
+            height: 100vh;
+            border: none;
+        }
+        .nav-dots {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 10px;
+            z-index: 1000;
+        }
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.3);
+            cursor: pointer;
+            z-index: 1000;
+            pointer-events: auto;
+        }
+        .dot.active {
+            background: #23cd3c;
+        }
+    </style>
+</head>
+<body>
+    <div class="slider-wrapper">
+        <div class="slider-container" id="slider">
+            <iframe src="/ecg_single.html" title="ECG Single"></iframe>
+            <iframe src="/ecg_multi.html" title="ECG Multi"></iframe>
+            <iframe src="/signal_single.html" title="Signal Single"></iframe>
+            <iframe src="/signal_multi.html" title="Signal Multi"></iframe>
+            <iframe src="/data-calculator.html" title="Data Calculator"></iframe>
+        </div>
+    </div>
+    <div class="nav-dots">
+        <div class="dot active" data-slide="0"></div>
+        <div class="dot" data-slide="1"></div>
+        <div class="dot" data-slide="2"></div>
+        <div class="dot" data-slide="3"></div>
+        <div class="dot" data-slide="4"></div>
+    </div>
+    <script>
+        const slider = document.getElementById('slider');
+        const dots = document.querySelectorAll('.dot');
+        let currentSlide = 0;
+
+        const iframes = slider.querySelectorAll('iframe');
+        iframes.forEach(iframe => {
+            iframe.addEventListener('click', () => {
+                iframe.contentWindow.focus();
+            });
+        });
+
+        function updateSlide(index) {
+            currentSlide = index;
+            slider.style.transform = `translateX(-${index * 100}vw)`;
+            dots.forEach((dot, i) => {
+                dot.classList.toggle('active', i === index);
+            });
+
+            // Send reset message to the current iframe
+            if (iframes[index]) {
+                iframes[index].contentWindow.postMessage('reset', '*');
+                // Focus the iframe content for hotkeys
+                setTimeout(() => {
+                    iframes[index].contentWindow.focus();
+                }, 100);
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.altKey) {
+                if (e.key === 'ArrowLeft') {
+                    e.preventDefault();
+                    const prev = (currentSlide - 1 + 5) % 5;
+                    updateSlide(prev);
+                } else if (e.key === 'ArrowRight') {
+                    e.preventDefault();
+                    const next = (currentSlide + 1) % 5;
+                    updateSlide(next);
+                }
+            }
+        });
+
+        // Listen for forwarded key events from iframes
+        window.addEventListener('message', (e) => {
+            if (e.data.type === 'keydown' && e.data.altKey) {
+                if (e.data.key === 'ArrowLeft') {
+                    const prev = (currentSlide - 1 + 5) % 5;
+                    updateSlide(prev);
+                } else if (e.data.key === 'ArrowRight') {
+                    const next = (currentSlide + 1) % 5;
+                    updateSlide(next);
+                }
+            }
+        });
+
+        dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => updateSlide(index));
+        });
+    </script>
+</body>
+</html>
