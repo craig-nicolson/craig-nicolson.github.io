@@ -19,7 +19,7 @@
         }
         .slider-container {
             display: flex;
-            width: 500vw; /* 5 * 100vw */
+            width: 600vw; /* 6 * 100vw */
             height: 100vh;
             transition: transform 0.3s ease;
         }
@@ -59,6 +59,7 @@
             <iframe src="/signal_single.html" title="Signal Single"></iframe>
             <iframe src="/signal_multi.html" title="Signal Multi"></iframe>
             <iframe src="/data-calculator.html" title="Data Calculator"></iframe>
+            <iframe src="/kumu.html" title="Kumu"></iframe>
         </div>
     </div>
     <div class="nav-dots">
@@ -67,6 +68,7 @@
         <div class="dot" data-slide="2"></div>
         <div class="dot" data-slide="3"></div>
         <div class="dot" data-slide="4"></div>
+        <div class="dot" data-slide="5"></div>
     </div>
     <script>
         const slider = document.getElementById('slider');
@@ -90,35 +92,36 @@
             // Send reset message to the current iframe
             if (iframes[index]) {
                 iframes[index].contentWindow.postMessage('reset', '*');
-                // Focus the iframe content for hotkeys
-                setTimeout(() => {
-                    iframes[index].contentWindow.focus();
-                }, 100);
             }
         }
 
-        document.addEventListener('keydown', (e) => {
-            if (e.altKey) {
+        window.addEventListener('keydown', (e) => {
+            if (e.ctrlKey) {
                 if (e.key === 'ArrowLeft') {
                     e.preventDefault();
-                    const prev = (currentSlide - 1 + 5) % 5;
+                    const prev = (currentSlide - 1 + 6) % 6;
                     updateSlide(prev);
                 } else if (e.key === 'ArrowRight') {
                     e.preventDefault();
-                    const next = (currentSlide + 1) % 5;
+                    const next = (currentSlide + 1) % 6;
                     updateSlide(next);
                 }
+            } else if (e.key === 'r' || e.key === 'R') {
+                e.preventDefault();
+                if (iframes[currentSlide]) {
+                    iframes[currentSlide].contentWindow.postMessage('reset', '*');
+                }
             }
-        });
+        }, true);
 
         // Listen for forwarded key events from iframes
         window.addEventListener('message', (e) => {
-            if (e.data.type === 'keydown' && e.data.altKey) {
+            if (e.data.type === 'keydown' && e.data.ctrlKey) {
                 if (e.data.key === 'ArrowLeft') {
-                    const prev = (currentSlide - 1 + 5) % 5;
+                    const prev = (currentSlide - 1 + 6) % 6;
                     updateSlide(prev);
                 } else if (e.data.key === 'ArrowRight') {
-                    const next = (currentSlide + 1) % 5;
+                    const next = (currentSlide + 1) % 6;
                     updateSlide(next);
                 }
             }
