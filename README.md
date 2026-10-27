@@ -8,7 +8,7 @@ An animated page showing 15,000 hours of waveform recordings a day flowing into 
 
 Row labels ("1 hour", "1 year", each "of recording") point at their rows. On narrow screens the hour rings shift right to make room, and the year label sits above the circle.
 
-When a year completes, a short animation plays as the year lands in the dataset. People who ask their device for reduced motion don't see it.
+When a year completes, a short animation plays as the year lands in the dataset.
 
 The page runs on the real clock, counted on from the dataset's size at a set time, so every visitor sees the same live state. Waveform names are typical ICU examples standing in for the real types.
 
@@ -99,8 +99,7 @@ The year disc puts its 8,760 hours on a sunflower spiral, which spreads them eve
 
 - Controls are native buttons with visible focus rings.
 - The canvas has a text description, and a finished year is announced to screen readers.
-- A Pause button is always visible.
-- With reduced motion, the page opens paused on a still frame, and the year-complete animation is skipped.
+- The page always plays, whatever the device's motion settings. There is no pause or play control.
 
 ## Deploy
 

@@ -34,12 +34,36 @@ export interface FxDot {
 }
 
 /** Seconds. The portal ends when its pulse has passed, so its figure is only a limit. */
-const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, spin: 5.3, fireworks: 4.2, number: 5.4 };
+const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, spin: 5.3, fireworks: 6.2, number: 5.4 };
 /** When the finished year appears in the dataset */
 const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, spin: 1, fireworks: 0.9, number: 0.97 };
-/** Fireworks go off across the stage with the biggest type in the middle, at uneven times */
-const SPOT = [0, -1, 1, -2, 2];
-const LAUNCH = [0, 0.35, 0.2, 0.6, 0.5];
+/** Fireworks: the year loads into shells, which rise and burst across the window */
+const FW = {
+  /** Seconds for a shell's hours to gather at its launch point */
+  gather: 0.55,
+  /** Seconds from launch to burst */
+  rise: 0.8,
+  /** Share of each shell's hours that become the rocket's exhaust rather than the burst */
+  exhaust: 0.18,
+  /** Launches spread over this many seconds; the last three go up together */
+  spread: 2.1,
+};
+type ShellStyle = 'peony' | 'willow' | 'crackle';
+/** Burst style by waveform: full spheres, drooping willow, slow twinkle */
+const STYLE: ShellStyle[] = ['peony', 'willow', 'peony', 'crackle', 'crackle'];
+interface Shell {
+  type: number;
+  launch: number;
+  lx: number;
+  ly: number;
+  bx: number;
+  by: number;
+  drift: number;
+  reach: number;
+  drag: number;
+  gravity: number;
+  style: ShellStyle;
+}
 /** Spin out: top spin in radians a second, and the moment the heap starts pouring away */
 const SPIN_MAX = 10;
 const POUR_AT = 3.6;
@@ -87,6 +111,9 @@ export class Celebration {
   private absorbed = 0;
   private gone = new Uint8Array(0);
   private pulseAt = 0;
+  private shells: Shell[] = [];
+  private shellOf = new Uint16Array(0);
+  private isExhaust = new Uint8Array(0);
   /** Things this show draws itself, so the scene hides its own versions */
   readonly hidesGuides: boolean;
   onLand: () => void = () => {};
@@ -101,7 +128,8 @@ export class Celebration {
     this.dur = DURATION[id];
     this.base = s.dotR / TEX_RADIUS;
     this.pc = new ParticleContainer({
-      dynamicProperties: { position: true, vertex: true, color: true, rotation: false, uvs: false },
+      // Fireworks stretch sparks along their path, so only they need rotation
+      dynamicProperties: { position: true, vertex: true, color: true, rotation: id === 'fireworks', uvs: false },
       texture: tex,
     });
     this.x0 = new Float32Array(n);
@@ -175,14 +203,62 @@ export class Celebration {
       }
       this.gone = new Uint8Array(n);
     } else if (this.id === 'fireworks') {
-      // Speeds spread through the whole burst (not a ring); a few long-lived streakers
-      const [phi, sp, life, lag, ph, streak] = (this.p = this.params(6));
+      // Each waveform gets shells in proportion to its share, so every shell holds about the same hours
+      const order: number[] = [];
+      DATA_TYPES.forEach((t, ty) => {
+        for (let k = 0; k < Math.max(1, Math.round(t.share * 10)); k++) order.push(ty);
+      });
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+      const m = order.length;
+      const span = s.x1 - s.x0;
+      const slots = order.map((_, k) => s.x0 + span * (0.12 + (0.76 * (k + 0.5)) / m));
+      for (let i = slots.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [slots[i], slots[j]] = [slots[j], slots[i]];
+      }
+      this.shells = order.map((ty, k) => {
+        const style = STYLE[ty % STYLE.length];
+        const bx = slots[k] + rnd(-0.03, 0.03) * span;
+        const by = s.h * rnd(0.12, 0.38);
+        // The finale: the last three launch almost together
+        const launch = FW.gather + (k < m - 3 ? (FW.spread * k) / Math.max(1, m - 3) + rnd(-0.08, 0.08) : FW.spread + rnd(0, 0.2));
+        const reach = Math.max(40, Math.min(s.R * rnd(0.55, 0.8), bx - s.x0 - 16, s.x1 - bx - 16, by - 16));
+        return {
+          type: ty,
+          launch,
+          lx: bx + rnd(-0.04, 0.04) * span,
+          ly: s.h - 18,
+          bx,
+          by,
+          drift: rnd(-1, 1) * 18,
+          reach,
+          style,
+          drag: style === 'willow' ? 1.3 : 2.6,
+          gravity: s.R * (style === 'willow' ? 1.5 : 0.9),
+        };
+      });
+      // Deal each type's hours round its shells
+      const mine = DATA_TYPES.map((_, ty) => this.shells.map((sh, k) => (sh.type === ty ? k : -1)).filter((k) => k >= 0));
+      const dealt = new Int32Array(DATA_TYPES.length);
+      this.shellOf = new Uint16Array(n);
+      this.isExhaust = new Uint8Array(n);
+      const [phi, sp, life, lag, size, jit, ph] = (this.p = this.params(7));
       for (let i = 0; i < n; i++) {
+        const ty = this.type[i];
+        const list = mine[ty];
+        const k = list[dealt[ty]++ % list.length];
+        const sh = this.shells[k];
+        this.shellOf[i] = k;
+        this.isExhaust[i] = Math.random() < FW.exhaust ? 1 : 0;
         phi[i] = rnd(0, Math.PI * 2);
         sp[i] = Math.sqrt(Math.random());
-        streak[i] = Math.random() < 0.12 ? 1 : 0;
-        life[i] = rnd(1.1, 2) * (streak[i] ? 1.4 : 1);
-        lag[i] = rnd(0, 0.22);
+        life[i] = sh.style === 'willow' ? rnd(2.2, 3) : sh.style === 'crackle' ? rnd(1, 1.8) : rnd(1.3, 2);
+        lag[i] = rnd(0, 0.35);
+        size[i] = rnd(1.6, 2.6);
+        jit[i] = rnd(-1, 1);
         ph[i] = rnd(0, Math.PI * 2);
       }
     } else if (this.id === 'orbit') {
@@ -378,42 +454,96 @@ export class Celebration {
   }
 
   /**
-   * Each waveform gathers into a rocket, rises as a comet with a trail, and
-   * bursts: sizes follow the share, timings are uneven, sparks slow, droop
-   * under gravity and twinkle out.
+   * The year loads into shells at the foot of the window. Each rises as a
+   * bright head with a sparkling exhaust and bursts in its waveform's colour:
+   * sparks start white-hot, streak along their path, slow, droop and fade.
    */
   private fireworks(): void {
-    const { s, time: t } = this;
-    const [phi, sp, life, lag, ph, streak] = this.p;
-    const k = 2.6;
-    const gravity = s.R * 1.1;
+    const t = this.time;
+    const [phi, sp, life, lag, size, jit, ph] = this.p;
+    const base = this.base;
     for (let i = 0; i < this.n; i++) {
-      const ty = this.type[i];
-      const spot = SPOT[ty];
-      const span = Math.min(s.x1 - s.x0, s.w * 2);
-      const bx = s.cx + spot * span * 0.19;
-      const by = s.cy - s.R * 0.15 - (2 - Math.abs(spot)) * s.R * 0.2;
-      const lx = bx - spot * span * 0.03;
-      const ly = s.cy + s.R * 0.85;
-      const start = LAUNCH[ty];
-      const rise = t - start - 0.35 - lag[i];
-      if (rise < 0) {
-        const e = ease(seg(t, start, start + 0.35));
-        this.set(i, lerp(this.x0[i], lx, e), lerp(this.y0[i], ly, e), 1, 1);
-      } else if (rise < 0.6) {
-        const f = 1 - (1 - rise / 0.6) ** 2;
-        this.set(i, lerp(lx, bx, f) + Math.sin(f * Math.PI) * spot * 6, lerp(ly, by, f), 0.9, 1 - lag[i] * 2);
-      } else {
-        const tau = rise - 0.6;
-        const reach = Math.min(s.R * (0.4 + 0.5 * Math.sqrt(DATA_TYPES[ty].share / 0.4)), bx - s.x0 - 12, s.x1 - bx - 12, by - 12);
-        const v = reach * k * sp[i] * (streak[i] ? 1.35 : 1);
-        const e = (1 - Math.exp(-k * tau)) / k;
-        const x = bx + Math.cos(phi[i]) * v * e;
-        const y = by + (Math.sin(phi[i]) * v - reach * 0.4) * e + (gravity / k) * (tau - e);
-        const twinkle = 0.8 + 0.2 * Math.sin(tau * Math.PI * 4.8 + ph[i]);
-        const fade = 1 - seg(tau, life[i] * 0.5, life[i]);
-        this.set(i, x, y, lerp(1.4, 0.6, seg(tau, 0, life[i])), fade * twinkle);
+      const sh = this.shells[this.shellOf[i]];
+      const p = this.parts[i];
+      const colour = DATA_TYPES[this.type[i]].color;
+      const rt = t - sh.launch;
+
+      // Loading: the hours stream down to their shell's launch point
+      if (rt < 0) {
+        const e = ease(seg(t, sh.launch - FW.gather, sh.launch));
+        p.x = lerp(this.x0[i], sh.lx + jit[i] * 3, e);
+        p.y = lerp(this.y0[i], sh.ly, e);
+        p.rotation = 0;
+        p.scaleX = p.scaleY = base * lerp(1, 1.3, e);
+        p.alpha = this.a0[i];
+        p.tint = colour;
+        continue;
       }
+
+      const path = (u: number) => {
+        const f = 1 - (1 - u) ** 2;
+        return { x: lerp(sh.lx, sh.bx, f) + Math.sin(Math.PI * u) * sh.drift, y: lerp(sh.ly, sh.by, f) };
+      };
+
+      if (this.isExhaust[i]) {
+        // Exhaust: strung out behind the head, spreading and sagging as it ages, then dying away
+        const u = Math.max(0, Math.min(1, (rt - lag[i]) / FW.rise));
+        const at = path(u);
+        const age = lag[i] / 0.35;
+        p.x = at.x + jit[i] * (2 + 9 * age);
+        p.y = at.y + 0.5 * sh.gravity * lag[i] * lag[i] * 2;
+        p.rotation = Math.PI / 2;
+        p.scaleX = base * size[i] * (1.6 - age);
+        p.scaleY = base * size[i] * 0.55;
+        p.tint = age < 0.25 ? OFF_WHITE : colour;
+        p.alpha = this.a0[i] * (1 - age * 0.6) * (1 - seg(rt, FW.rise, FW.rise + 0.7)) * (rt - lag[i] < 0 ? 0 : 1);
+        continue;
+      }
+
+      // Payload: rides up packed into the rocket's head
+      if (rt < FW.rise) {
+        const at = path(rt / FW.rise);
+        p.x = at.x + jit[i] * 2;
+        p.y = at.y + Math.cos(phi[i]) * 2;
+        p.rotation = 0;
+        p.scaleX = p.scaleY = base * 1.4;
+        p.tint = OFF_WHITE;
+        p.alpha = this.a0[i];
+        continue;
+      }
+
+      // Burst: drag and gravity, worked out exactly for any moment
+      const tau = rt - FW.rise;
+      const k = sh.drag;
+      const v = sh.reach * k * sp[i];
+      const vx = Math.cos(phi[i]) * v;
+      const vy = Math.sin(phi[i]) * v - sh.reach * 0.35;
+      const decay = Math.exp(-k * tau);
+      const e = (1 - decay) / k;
+      p.x = sh.bx + vx * e;
+      p.y = sh.by + vy * e + (sh.gravity / k) * (tau - e);
+      const nowX = vx * decay;
+      const nowY = vy * decay + (sh.gravity / k) * (1 - decay);
+      const speed = Math.hypot(nowX, nowY);
+      p.rotation = Math.atan2(nowY, nowX);
+      const fade = 1 - seg(tau, life[i] * 0.45, life[i]);
+      const twinkle = sh.style === 'crackle' ? 0.65 + 0.35 * Math.sin(tau * Math.PI * 5 + ph[i]) : 1;
+      const grow = sh.style === 'willow' ? 1.25 : 1;
+      p.scaleY = base * size[i] * lerp(1, 0.55, seg(tau, 0, life[i])) * grow;
+      p.scaleX = p.scaleY * (1 + Math.min(sh.style === 'willow' ? 7 : 5, speed * 0.02));
+      p.tint = tau < 0.12 ? OFF_WHITE : colour;
+      p.alpha = this.a0[i] * fade * twinkle;
+    }
+
+    // Each rocket's head glows as it climbs
+    for (const sh of this.shells) {
+      const rt = t - sh.launch;
+      if (rt < 0 || rt >= FW.rise) continue;
+      const u = rt / FW.rise;
+      const f = 1 - (1 - u) ** 2;
+      const x = lerp(sh.lx, sh.bx, f) + Math.sin(Math.PI * u) * sh.drift;
+      const y = lerp(sh.ly, sh.by, f);
+      this.g.circle(x, y, 4 + 2 * u).fill({ color: OFF_WHITE, alpha: 0.95 });
     }
   }
 

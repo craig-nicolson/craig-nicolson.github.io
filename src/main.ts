@@ -185,7 +185,6 @@ async function boot(): Promise<void> {
   }
   const clock = new LiveClock();
   fillText(clock);
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const live = $('#live');
   const refreshReadout = bindReadout(clock);
   refreshReadout();
@@ -233,7 +232,7 @@ async function boot(): Promise<void> {
   const tex = app.renderer.generateTexture({ target: disc, resolution: 2, antialias: true });
   const tweens = new Tweens();
   const quality = new Quality();
-  const scene = new YearScene({ clock, tweens, tex, quality: () => quality.factor, reducedMotion: reduced }, YEAR_FILL, CELEBRATION);
+  const scene = new YearScene({ clock, tweens, tex, quality: () => quality.factor }, YEAR_FILL, CELEBRATION);
   app.stage.addChild(scene.root);
   app.stage.x = off;
   scene.setBounds(-off, cw - off);
@@ -266,11 +265,11 @@ async function boot(): Promise<void> {
     }
   });
 
-  // ---- Run only when playing, on screen and in a visible tab
-  let playing = !reduced;
+  // ---- Always playing. Drawing is skipped only while the picture can't be seen
+  // (scrolled away or a hidden tab); the live clock keeps time, so nothing is lost.
   let onScreen = true;
   const sync = () => {
-    const run = playing && onScreen && !document.hidden;
+    const run = onScreen && !document.hidden;
     if (run && !app.ticker.started) app.start();
     else if (!run && app.ticker.started) app.stop();
   };
@@ -308,18 +307,6 @@ async function boot(): Promise<void> {
   document.addEventListener('visibilitychange', sync);
   document.fonts?.ready.then(() => refreshLabels(true));
 
-  // ---- Controls
-  const btn = $<HTMLButtonElement>('#play-toggle');
-  const apply = () => {
-    btn.textContent = playing ? 'Pause' : 'Play';
-    sync();
-  };
-  btn.addEventListener('click', () => {
-    playing = !playing;
-    $('#motion-note').hidden = true;
-    apply();
-    live.textContent = playing ? 'Animation playing.' : 'Animation paused.';
-  });
   if (debugMode) {
     buildDebug($('#debug'), clock, scene, () => {
       relayout();
@@ -327,18 +314,11 @@ async function boot(): Promise<void> {
     });
   }
 
-  // ---- First frame: an opening fill, or a calm still for reduced motion
-  if (reduced) {
-    scene.enter(false);
-    for (let i = 0; i < 150; i++) scene.update(1 / 60);
-    $('#motion-note').hidden = false;
-    labelsEl.classList.remove('is-hidden');
-  } else {
-    scene.enter(true);
-    window.setTimeout(() => labelsEl.classList.remove('is-hidden'), 350);
-  }
+  // ---- First frame: the opening fill, then it plays
+  scene.enter(true);
+  window.setTimeout(() => labelsEl.classList.remove('is-hidden'), 350);
   app.render();
-  apply();
+  sync();
 }
 
 boot();

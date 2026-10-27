@@ -308,23 +308,9 @@ b {
   margin-top: 16px;
 }
 
-.stage-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.scale-note,
-.motion-note {
+.scale-note {
   max-width: 48em;
   font-size: var(--dl-text-small);
-}
-
-.motion-note {
-  margin-top: 16px;
-}
-
-.motion-note[hidden] {
-  display: none;
 }
 
 /* ---- Readout */
@@ -569,11 +555,4 @@ b {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .pill,
-  .btn,
-  .stage-labels {
-    transition: none;
-  }
-}
 

@@ -33,8 +33,6 @@ export interface SceneContext {
   tex: Texture;
   /** 1 at full quality; lower when frames are slow */
   quality: () => number;
-  /** Year-complete animations are skipped for people who ask for less motion */
-  reducedMotion: boolean;
 }
 
 interface Ripple {
@@ -583,7 +581,7 @@ export class YearScene {
     const T = this.ctx.clock.total();
     const yi = Math.floor(T / YEAR_HOURS);
     if (yi !== this.yearIndex) {
-      this.completeYear(T, yi === this.yearIndex + 1 && !this.ctx.reducedMotion);
+      this.completeYear(T, yi === this.yearIndex + 1);
       return;
     }
     const fresh: number[] = [];
