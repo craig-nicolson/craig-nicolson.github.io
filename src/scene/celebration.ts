@@ -34,22 +34,23 @@ export interface FxDot {
 }
 
 /** Seconds. The portal ends when its pulse has passed, so its figure is only a limit. */
-const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, spin: 5.3, collider: 7.2, number: 5.4 };
+const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, pour: 12, spin: 5.3, collider: 5.2, number: 5.4 };
 /** When the finished year appears in the dataset */
-const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, spin: 1, collider: 1, number: 0.97 };
-/** Collider: when the bunches are kicked off the ring, when they meet, and when the debris is swept away (seconds) */
+const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, pour: 1, spin: 1, collider: 1, number: 0.97 };
+/** Collider: when the bunches are kicked off the ring and meet, then how long the debris bursts out and falls back (seconds) */
 const KICK_AT = 2.6;
 const COLLIDE_AT = 2.85;
-const SWEEP_AT = 5.7;
-/** How hard the magnetic field turns the heaviest type, in radians a second; lighter types turn faster */
-const FIELD = 3.2;
-/** Each type's charge and mass in the collision: the sign sets which way it curls, the mass how tightly */
-const CHARGE = [1, -1, 1, -1, 1];
-const MASS = [1, 0.75, 0.6, 0.45, 0.35];
-/** Energy lost to the field each second, so tracks spiral inwards */
-const TRACK_DRAG = 0.7;
+const BURST_S = 0.75;
+const REGROUP_S = 0.6;
 /** How fast the long-exposure trails fade; higher means shorter trails */
 const TRAIL_FADE = 7;
+/** Pour: when the ring starts opening and how long it takes, and when to stop waiting for stragglers (seconds) */
+const POUR_OPEN_AT = 0.9;
+const POUR_OPEN_S = 0.8;
+const POUR_GIVE_UP = 9;
+/** How bouncy the hours are against each other, and against the ring and arms (0 is dead, 1 is perfect) */
+const GRAIN_BOUNCE = 0.15;
+const WALL_BOUNCE = 0.55;
 /** Spin out: top spin in radians a second, and the moment the heap starts pouring away */
 const SPIN_MAX = 10;
 const POUR_AT = 3.6;
@@ -92,6 +93,9 @@ export class Celebration {
   private bounces = new Uint8Array(0);
   private heap = new Float32Array(0);
   private col = 2;
+  // Pour: positions grains on a grid each frame, so each only checks its neighbours
+  private grid = { x0: 0, y0: 0, size: 2, w: 1, h: 1, count: new Int32Array(1), start: new Int32Array(2), fill: new Int32Array(1), order: new Int32Array(0), cell: new Int32Array(0) };
+  private arms: { px: number; py: number; ex: number; ey: number; len2: number; nx: number; ny: number }[] = [];
   // Portal: the funnel along the line from the disc to the slot
   private axis = { dx: 0, dy: 1, nx: 1, ny: 0, L: 1, at: 0, wt: 1, ws: 1, a1: 0, a2: 0, phi: 0 };
   private absorbed = 0;
@@ -149,8 +153,31 @@ export class Celebration {
     } else {
       this.root.addChild(this.pc, this.g);
     }
-    this.hidesGuides = id === 'portal';
+    this.hidesGuides = id === 'portal' || id === 'pour';
     this.setup();
+  }
+
+  /** The line from the year's centre to its slot, and the two magnifier arms either side of it */
+  private funnel(): void {
+    const { s } = this;
+    const dx = s.tx - s.cx;
+    const dy = s.ty - s.cy;
+    const L = Math.hypot(dx, dy) || 1;
+    const half = Math.acos(Math.max(-1, Math.min(1, (s.ring - s.slotR) / L)));
+    const phi = Math.atan2(dy, dx);
+    this.axis = {
+      dx: dx / L,
+      dy: dy / L,
+      nx: -dy / L,
+      ny: dx / L,
+      L,
+      at: s.ring * Math.cos(half),
+      wt: s.ring * Math.sin(half),
+      ws: s.slotR * Math.sin(half),
+      a1: phi - half,
+      a2: phi + half,
+      phi,
+    };
   }
 
   private params(k: number): Float32Array[] {
@@ -173,28 +200,42 @@ export class Celebration {
       this.bounces = new Uint8Array(n);
       this.col = Math.max(2, s.dotR * 2);
       this.heap = new Float32Array(Math.ceil((s.x1 - s.x0) / this.col) + 1);
+    } else if (this.id === 'pour') {
+      this.funnel();
+      const [px, py] = (this.p = this.params(4));
+      px.set(this.x0);
+      py.set(this.y0);
+      this.gone = new Uint8Array(n);
+      // 1 once an hour has left the ring through the opening
+      this.state = new Uint8Array(n);
+      // The area the hours can reach, split into cells about one hour across
+      const size = Math.max(2, s.dotR * 2);
+      const x0 = Math.min(s.cx - s.ring, s.tx - s.slotR) - 8;
+      const y0 = s.cy - s.ring - 8;
+      const w = Math.ceil((Math.max(s.cx + s.ring, s.tx + s.slotR) + 8 - x0) / size);
+      const h = Math.ceil((Math.max(s.cy + s.ring, s.ty + s.slotR) + 8 - y0) / size);
+      this.grid = { x0, y0, size, w, h, count: new Int32Array(w * h), start: new Int32Array(w * h + 1), fill: new Int32Array(w * h), order: new Int32Array(n), cell: new Int32Array(n) };
+      // The two magnifier arms as walls, each with its normal pointing into the funnel
+      const ax = this.axis;
+      const mx = (s.cx + s.tx) / 2;
+      const my = (s.cy + s.ty) / 2;
+      this.arms = [ax.a1, ax.a2].map((a) => {
+        const px0 = s.cx + Math.cos(a) * s.ring;
+        const py0 = s.cy + Math.sin(a) * s.ring;
+        const ex = s.tx + Math.cos(a) * s.slotR - px0;
+        const ey = s.ty + Math.sin(a) * s.slotR - py0;
+        const len = Math.hypot(ex, ey) || 1;
+        let nx = -ey / len;
+        let ny = ex / len;
+        if ((mx - px0) * nx + (my - py0) * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+        return { px: px0, py: py0, ex, ey, len2: len * len, nx, ny };
+      });
     } else if (this.id === 'portal') {
-      // Work along the line from the disc's centre to the slot: a (along) and b (across)
-      const dx = s.tx - s.cx;
-      const dy = s.ty - s.cy;
-      const L = Math.hypot(dx, dy) || 1;
-      const ux = dx / L;
-      const uy = dy / L;
-      const half = Math.acos(Math.max(-1, Math.min(1, (s.ring - s.slotR) / L)));
-      const phi = Math.atan2(dy, dx);
-      this.axis = {
-        dx: ux,
-        dy: uy,
-        nx: -uy,
-        ny: ux,
-        L,
-        at: s.ring * Math.cos(half),
-        wt: s.ring * Math.sin(half),
-        ws: s.slotR * Math.sin(half),
-        a1: phi - half,
-        a2: phi + half,
-        phi,
-      };
+      this.funnel();
+      const { dx: ux, dy: uy } = this.axis;
       const [a, b, delay] = (this.p = this.params(3));
       for (let i = 0; i < n; i++) {
         const ox = this.x0[i] - s.cx;
@@ -286,15 +327,17 @@ export class Celebration {
     this.g.clear();
     if (this.id === 'spin') this.spin(Math.min(dt, 1 / 30));
     else if (this.id === 'portal') this.portal();
+    else if (this.id === 'pour') this.pour(Math.min(dt, 1 / 40));
     else if (this.id === 'collider') this.collider(Math.min(dt, 1 / 30));
     else if (this.id === 'orbit') this.orbit(u);
     else this.number(u);
-    const lands = this.id === 'portal' ? this.pulseAt > 0 && this.time >= this.pulseAt + 0.35 : u >= LANDS[this.id];
+    const pulses = this.id === 'portal' || this.id === 'pour';
+    const lands = pulses ? this.pulseAt > 0 && this.time >= this.pulseAt + 0.35 : u >= LANDS[this.id];
     if (!this.landed && lands) {
       this.landed = true;
       this.onLand();
     }
-    if (this.id === 'portal' && this.pulseAt > 0) return this.time < this.pulseAt + PULSE_S;
+    if (pulses && this.pulseAt > 0) return this.time < this.pulseAt + PULSE_S;
     return u < 1;
   }
 
@@ -411,10 +454,9 @@ export class Celebration {
   /**
    * The ring becomes a particle accelerator. The year splits into two bunches
    * that race round it in opposite directions, faster and faster, then are
-   * kicked inwards to collide at the centre. The debris sprays out through a
-   * magnetic field: each waveform has its own charge and mass, so it curls its
-   * own way and spirals down as it loses energy, like tracks in a bubble
-   * chamber. Long-exposure trails record every path.
+   * kicked inwards to collide at the centre. The debris bursts out, falls back
+   * together and becomes the year's disc, which drops into the dataset.
+   * Long-exposure trails record every path.
    */
   private collider(dt: number): void {
     const { s, time: t } = this;
@@ -422,9 +464,8 @@ export class Celebration {
     const omega = 1.5 + 16 * seg(t, 0.3, KICK_AT) ** 2;
     this.spinAngle += omega * dt;
     const stretch = 1 + 0.8 * seg(t, 0.5, KICK_AT);
-    const drag = Math.exp(-TRACK_DRAG * dt);
+    const regrouped = COLLIDE_AT + BURST_S + REGROUP_S;
     for (let i = 0; i < this.n; i++) {
-      const type = this.type[i] % CHARGE.length;
       if (this.state[i] === 0) {
         // Join a bunch and go round the ring
         const a = (i & 1 ? Math.PI - this.spinAngle : this.spinAngle) + ang[i] * stretch;
@@ -446,37 +487,19 @@ export class Celebration {
           this.set(i, lerp(kx[i], s.cx, f), lerp(ky[i], s.cy, f), 1, 1);
           continue;
         }
-        // Collision: fly off in any direction, at a speed that keeps each spiral inside the picture
-        const w = (CHARGE[type] * FIELD) / MASS[type];
-        const speed = Math.abs(w) * s.R * 0.8 * Math.random() ** 0.6;
+        // Collision: each hour gets a direction and how far it will fly
         const phi = rnd(0, Math.PI * 2);
-        vx[i] = Math.cos(phi) * speed;
-        vy[i] = Math.sin(phi) * speed;
-        px[i] = s.cx;
-        py[i] = s.cy;
+        const reach = s.R * (0.35 + 0.8 * Math.sqrt(Math.random()));
+        vx[i] = Math.cos(phi) * reach;
+        vy[i] = Math.sin(phi) * reach;
         this.state[i] = 2;
       }
-      if (this.state[i] === 2) {
-        if (t < SWEEP_AT + delay[i]) {
-          // The field turns each track by a fixed angle a second; drag tightens it into a spiral
-          const turn = ((CHARGE[type] * FIELD) / MASS[type]) * dt;
-          const c = Math.cos(turn);
-          const sn = Math.sin(turn);
-          const nx = (vx[i] * c - vy[i] * sn) * drag;
-          vy[i] = (vx[i] * sn + vy[i] * c) * drag;
-          vx[i] = nx;
-          px[i] += vx[i] * dt;
-          py[i] += vy[i] * dt;
-          this.set(i, px[i], py[i], 1.1, 1);
-          continue;
-        }
-        kx[i] = px[i];
-        ky[i] = py[i];
-        this.state[i] = 3;
-      }
-      // The field switches off and the debris is swept into the dataset
-      const e = ease(seg(t, SWEEP_AT + delay[i], SWEEP_AT + delay[i] + 0.9));
-      this.set(i, lerp(kx[i], s.tx, e), lerp(ky[i], s.ty, e), lerp(1.1, 0.4, e), 1 - seg(e, 0.85, 1));
+      // Burst outwards, slowing as it spreads, then fall back together at the centre
+      const tau = t - COLLIDE_AT;
+      const out = 1 - Math.exp(-5 * Math.min(tau, BURST_S));
+      const back = ease(seg(tau, BURST_S + delay[i] * 0.4, BURST_S + REGROUP_S + delay[i] * 0.4));
+      const k = out * (1 - back);
+      this.set(i, s.cx + vx[i] * k, s.cy + vy[i] * k, 1, 1 - seg(t, regrouped - 0.1, regrouped + 0.15));
     }
 
     // The collision: a flash and two shockwaves
@@ -490,11 +513,14 @@ export class Celebration {
       });
     }
 
+    // The debris becomes the year's disc, which drops into its place in the dataset
+    this.core(t / this.dur, (regrouped - 0.2) / this.dur, (regrouped + 0.15) / this.dur, (regrouped + 0.3) / this.dur);
+
     // Long exposure: copy last frame's trails a little fainter, draw this frame on top, then swap
     if (this.trails) {
       const [front, back] = this.trails;
       this.copy.texture = front;
-      this.copy.alpha = Math.exp(-TRAIL_FADE * lerp(1, 3, seg(t, 6.2, 7.1)) * dt);
+      this.copy.alpha = Math.exp(-TRAIL_FADE * lerp(1, 3, seg(t, regrouped, regrouped + 0.6)) * dt);
       this.renderer.render({ container: this.copyHolder, target: back, clear: true });
       this.renderer.render({ container: this.trailHolder, target: back, clear: false });
       this.trails = [back, front];
@@ -536,34 +562,44 @@ export class Celebration {
       this.set(i, s.cx + ax.dx * a + ax.nx * b, s.cy + ax.dy * a + ax.ny * b, lerp(1, 0.6, seg(a, ax.L * 0.7, ax.L)), 1);
     }
 
-    // The ring, opening from the top end of the gap to the bottom end
+    this.portalScene(ease(seg(t, 0.1, OPEN_S)), seg(t, 0.2, OPEN_S), 6, OPEN_S * 0.6);
+  }
+
+  /** The part of the ring between the magnifier arms: where it starts opening (the higher end), which way, and how wide */
+  private gapArc(): { start: number; dir: number; span: number } {
+    const { s, axis: ax } = this;
+    const higher = s.cy + Math.sin(ax.a1) * s.ring <= s.cy + Math.sin(ax.a2) * s.ring;
+    return { start: higher ? ax.a1 : ax.a2, dir: higher ? 1 : -1, span: ax.a2 - ax.a1 };
+  }
+
+  /**
+   * Shared by Portal and Pour: the ring with its opening, the magnifier arms
+   * (brighter while the hours run down them), and the portal, which swells as
+   * it absorbs and then lets out the pulse.
+   */
+  private portalScene(open: number, wallUp: number, giveUpAt: number, swirlAfter: number): void {
+    const { s, time: t, axis: ax } = this;
     const g = this.g;
-    const p1y = s.cy + Math.sin(ax.a1) * s.ring;
-    const p2y = s.cy + Math.sin(ax.a2) * s.ring;
-    const [start, dir] = p1y <= p2y ? [ax.a1, 1] : [ax.a2, -1];
-    const span = ax.a2 - ax.a1;
-    const open = ease(seg(t, 0.1, OPEN_S));
+    const { start, dir, span } = this.gapArc();
     const from = start + dir * span * open;
     g.moveTo(s.cx + Math.cos(from) * s.ring, s.cy + Math.sin(from) * s.ring)
       .arc(s.cx, s.cy, s.ring, from, start + dir * Math.PI * 2, dir < 0)
       .stroke({ width: 4, color: OFF_WHITE, alpha: 0.9 * (1 - seg(t, this.pulseAt || 99, (this.pulseAt || 99) + 0.4)), cap: 'round' });
 
-    // The funnel walls, brighter while the hours run down them
-    const wall = 0.15 + 0.35 * seg(t, 0.2, OPEN_S) * (1 - seg(t, this.pulseAt || 99, (this.pulseAt || 99) + 0.6));
+    const wall = 0.15 + 0.35 * wallUp * (1 - seg(t, this.pulseAt || 99, (this.pulseAt || 99) + 0.6));
     for (const ang of [ax.a1, ax.a2]) {
       g.moveTo(s.cx + Math.cos(ang) * s.ring, s.cy + Math.sin(ang) * s.ring)
         .lineTo(s.tx + Math.cos(ang) * s.slotR, s.ty + Math.sin(ang) * s.slotR)
         .stroke({ width: 2, color: OFF_WHITE, alpha: wall, cap: 'round' });
     }
 
-    // The portal: swells as it absorbs, with arcs spinning round it
     const filled = this.absorbed / Math.max(1, this.n);
-    if (!this.pulseAt && (filled > 0.995 || t > 6)) this.pulseAt = t;
+    if (!this.pulseAt && (filled > 0.995 || t > giveUpAt)) this.pulseAt = t;
     const pt = this.pulseAt ? t - this.pulseAt : -1;
     let rp = s.slotR * (1 + 2.2 * Math.sqrt(filled));
     if (pt >= 0) rp = lerp(s.slotR * 3.6, s.tr, ease(seg(pt, 0.05, 0.6)));
     g.circle(s.tx, s.ty, rp).fill({ color: OFF_WHITE, alpha: 0.95 });
-    if (pt < 0 && t > OPEN_S * 0.6) {
+    if (pt < 0 && t > swirlAfter) {
       for (let k = 0; k < 3; k++) {
         const a = t * 5 + (k * Math.PI * 2) / 3;
         g.moveTo(s.tx + Math.cos(a) * (rp + 6), s.ty + Math.sin(a) * (rp + 6))
@@ -582,6 +618,152 @@ export class Celebration {
         const out = 1 - (1 - e) ** 3;
         g.circle(s.tx, s.ty, lerp(rp, reach, out)).stroke({ width: lerp(7, 1.5, e), color, alpha: 0.85 * (1 - e) });
       });
+    }
+  }
+
+  /**
+   * Gravity switches on. The year's hours fall and bounce inside the ring and
+   * pile up like sand, pushing against each other. The ring opens between the
+   * magnifier arms and they pour out, tumbling down between the arms into the
+   * year's slot, which swells as it takes them in and then lets out the pulse.
+   */
+  private pour(dt: number): void {
+    const { s, time: t } = this;
+    const [px, py, vx, vy] = this.p;
+    const r = s.dotR;
+    const gravity = s.h * 1.8;
+    const air = Math.exp(-0.15 * dt);
+    const n = this.n;
+
+    // 1. Fall
+    for (let i = 0; i < n; i++) {
+      if (this.gone[i]) continue;
+      vy[i] = (vy[i] + gravity * dt) * air;
+      vx[i] *= air;
+      px[i] += vx[i] * dt;
+      py[i] += vy[i] * dt;
+    }
+
+    // 2. Hours push each other apart, on a grid so each only checks its neighbours
+    this.collideGrains(px, py, vx, vy, 2 * r);
+
+    // 3. The ring (except where it has opened), the arms, and the portal
+    const { start, dir, span } = this.gapArc();
+    const opened = span * ease(seg(t, POUR_OPEN_AT, POUR_OPEN_AT + POUR_OPEN_S));
+    const inside = s.ring - 2 - r;
+    const away = this.pulseAt ? 1 - seg(t, this.pulseAt, this.pulseAt + 0.3) : 1;
+    for (let i = 0; i < n; i++) {
+      if (this.gone[i]) continue;
+      const ox = px[i] - s.cx;
+      const oy = py[i] - s.cy;
+      const d = Math.hypot(ox, oy) || 1;
+      // Until an hour has left through the opening, the ring holds it, however hard the pile pushes
+      if (!this.state[i] && d > inside) {
+        let rel = ((Math.atan2(oy, ox) - start) * dir) % (Math.PI * 2);
+        if (rel < 0) rel += Math.PI * 2;
+        if (rel <= opened) {
+          if (d > s.ring) this.state[i] = 1;
+        } else {
+          const nx = ox / d;
+          const ny = oy / d;
+          px[i] = s.cx + nx * inside;
+          py[i] = s.cy + ny * inside;
+          const vn = vx[i] * nx + vy[i] * ny;
+          if (vn > 0) {
+            vx[i] -= (1 + WALL_BOUNCE) * vn * nx;
+            vy[i] -= (1 + WALL_BOUNCE) * vn * ny;
+          }
+        }
+      }
+      if (this.state[i]) {
+        for (const arm of this.arms) {
+          const along = ((px[i] - arm.px) * arm.ex + (py[i] - arm.py) * arm.ey) / arm.len2;
+          if (along < -0.05 || along > 1.05) continue;
+          const side = (px[i] - arm.px) * arm.nx + (py[i] - arm.py) * arm.ny;
+          if (side >= r) continue;
+          px[i] += (r - side) * arm.nx;
+          py[i] += (r - side) * arm.ny;
+          const vn = vx[i] * arm.nx + vy[i] * arm.ny;
+          if (vn < 0) {
+            vx[i] -= (1 + WALL_BOUNCE) * vn * arm.nx;
+            vy[i] -= (1 + WALL_BOUNCE) * vn * arm.ny;
+          }
+        }
+      }
+      const intoPortal = Math.hypot(px[i] - s.tx, py[i] - s.ty) < s.slotR + r;
+      const lost = py[i] > s.h + 30 || px[i] < s.x0 - 30 || px[i] > s.x1 + 30;
+      if (intoPortal || lost) {
+        this.gone[i] = 1;
+        this.absorbed++;
+        this.set(i, s.tx, s.ty, 0, 0);
+        continue;
+      }
+      this.set(i, px[i], py[i], 1, away);
+    }
+
+    this.portalScene(ease(seg(t, POUR_OPEN_AT, POUR_OPEN_AT + POUR_OPEN_S)), seg(t, POUR_OPEN_AT - 0.2, POUR_OPEN_AT + POUR_OPEN_S), POUR_GIVE_UP, POUR_OPEN_AT + 0.3);
+  }
+
+  /** Overlapping hours are pushed apart, and their closing speed mostly absorbed (sand, not marbles) */
+  private collideGrains(px: Float32Array, py: Float32Array, vx: Float32Array, vy: Float32Array, d0: number): void {
+    const G = this.grid;
+    const { count, start, fill, order, cell } = G;
+    count.fill(0);
+    for (let i = 0; i < this.n; i++) {
+      if (this.gone[i]) {
+        cell[i] = -1;
+        continue;
+      }
+      const cx = Math.max(0, Math.min(G.w - 1, Math.floor((px[i] - G.x0) / G.size)));
+      const cy = Math.max(0, Math.min(G.h - 1, Math.floor((py[i] - G.y0) / G.size)));
+      const c = cx + cy * G.w;
+      cell[i] = c;
+      count[c]++;
+    }
+    for (let c = 0; c < count.length; c++) start[c + 1] = start[c] + count[c];
+    fill.set(start.subarray(0, count.length));
+    for (let i = 0; i < this.n; i++) if (cell[i] >= 0) order[fill[cell[i]]++] = i;
+
+    const d02 = d0 * d0;
+    const pair = (i: number, j: number) => {
+      const dx = px[j] - px[i];
+      const dy = py[j] - py[i];
+      const d2 = dx * dx + dy * dy;
+      if (d2 >= d02 || d2 < 1e-6) return;
+      const d = Math.sqrt(d2);
+      const nx = dx / d;
+      const ny = dy / d;
+      const push = (d0 - d) * 0.5;
+      px[i] -= nx * push;
+      py[i] -= ny * push;
+      px[j] += nx * push;
+      py[j] += ny * push;
+      const closing = (vx[j] - vx[i]) * nx + (vy[j] - vy[i]) * ny;
+      if (closing < 0) {
+        const k = -(1 + GRAIN_BOUNCE) * closing * 0.5;
+        vx[i] -= k * nx;
+        vy[i] -= k * ny;
+        vx[j] += k * nx;
+        vy[j] += k * ny;
+      }
+    };
+    // Each cell against itself and four neighbours (right, and the three below), so every pair is checked once
+    const NEIGHBOURS: [number, number][] = [[1, 0], [-1, 1], [0, 1], [1, 1]];
+    for (let c = 0; c < count.length; c++) {
+      if (!count[c]) continue;
+      const cx = c % G.w;
+      const cy = (c / G.w) | 0;
+      for (let a = start[c]; a < start[c + 1]; a++) {
+        const i = order[a];
+        for (let b = a + 1; b < start[c + 1]; b++) pair(i, order[b]);
+        for (const [ox, oy] of NEIGHBOURS) {
+          const nx = cx + ox;
+          const ny = cy + oy;
+          if (nx < 0 || nx >= G.w || ny >= G.h) continue;
+          const nc = nx + ny * G.w;
+          for (let b = start[nc]; b < start[nc + 1]; b++) pair(i, order[b]);
+        }
+      }
     }
   }
 

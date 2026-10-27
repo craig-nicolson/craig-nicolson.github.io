@@ -396,10 +396,9 @@ export class YearScene {
     this.field.removeParticles();
     this.fieldParts = [];
     const s = (this.fieldPitch * 0.38) / TEX_RADIUS;
-    const sinceOpen = Math.floor(this.ctx.clock.openTotal / YEAR_HOURS);
     for (let i = 0; i < this.fieldCount; i++) {
       const { x, y } = this.fieldPos(i);
-      const p = new Particle({ texture: this.ctx.tex, x, y, anchorX: 0.5, anchorY: 0.5, scaleX: s, scaleY: s, tint: OFF_WHITE, alpha: i >= sinceOpen ? 0.9 : 0.42 });
+      const p = new Particle({ texture: this.ctx.tex, x, y, anchorX: 0.5, anchorY: 0.5, scaleX: s, scaleY: s, tint: OFF_WHITE, alpha: 0.9 });
       this.fieldParts.push(p);
       this.field.addParticle(p);
     }

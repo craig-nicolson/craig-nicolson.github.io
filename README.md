@@ -31,7 +31,7 @@ Add `#debug` (or `?debug`) to the address for:
 
 - **Speed:** real time, 10×, 100× or 1,000×. At 1,000× a year of recording fills in under a minute.
 - **Fill:** clockwise, or from the centre out.
-- **When a year completes:** Orbit, Portal, Spin out, Collider or Year count, plus a **Play year finale** button. It fills the rest of the current year quickly, plays the chosen finale into this year's slot, then sweeps back to where the year really is. The live clock, counts and dataset are never changed, and it works whether or not the picture is in view.
+- **When a year completes:** Orbit, Portal, Pour, Spin out, Collider or Year count, plus a **Play year finale** button. It fills the rest of the current year quickly, plays the chosen finale into this year's slot, then sweeps back to where the year really is. The live clock, counts and dataset are never changed, and it works whether or not the picture is in view.
 
 ## The data, and updating it
 
@@ -77,7 +77,8 @@ Two simplifications to know about:
 
 - `src/main.ts`: the page. Controls, live numbers, labels, debug panel, pausing.
 - `src/scene/year.ts`: the picture. Streams, hour rings, the year disc and the dataset.
-- `src/scene/celebration.ts`: the five year-complete animations. Collider draws long-exposure trails with two textures that take turns.
+- `src/scene/celebration.ts`: the six year-complete animations. Portal and Pour share the ring, arms and portal drawing. Pour is real physics: gravity, hours colliding on a grid, and bounces off the ring and the magnifier arms. Collider draws long-exposure trails with two textures that take turns.
+- `scripts/simulate-finale.mjs` (`npm run sim:finale -- pour`): runs an animation's real code at a steady 60 frames a second and reports its timeline and cost per frame. Useful where software rendering runs far below real speed.
 - `src/clock.ts`: the live clock and dataset total, adding up the modelled rate (with its daily and weekly shape, in UK time) since `asOf`.
 - `src/flow.json`: the data. `scripts/check-flow.mjs` checks it.
 - `src/config.ts`: design settings, and the checks that tidy `flow.json` on load.
