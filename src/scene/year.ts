@@ -1,4 +1,4 @@
-import { Container, Graphics, Particle, ParticleContainer, type Texture } from 'pixi.js';
+import { Container, Graphics, Particle, ParticleContainer, type Renderer, type Texture } from 'pixi.js';
 import type { LiveClock } from '../clock';
 import { DATA_TYPES, MAX_SHARE, NAVY, OFF_WHITE, TRACK_ALPHA, TRACK_SOLID, YEAR_HOURS, type CelebrationId, type YearFill } from '../config';
 import { ease, easeExit, type Tweens } from '../ease';
@@ -31,9 +31,13 @@ export interface SceneContext {
   clock: LiveClock;
   tweens: Tweens;
   tex: Texture;
+  renderer: Renderer;
   /** 1 at full quality; lower when frames are slow */
   quality: () => number;
 }
+
+/** Seconds for the debug preview to fill the rest of the year before its finale */
+const PREVIEW_FILL_S = 1.4;
 
 interface Ripple {
   x: number;
@@ -94,6 +98,10 @@ export class YearScene {
   private dirty = false;
   private ripples: Ripple[] = [];
   private fx: Celebration | null = null;
+  /** Whether the running finale is a debug preview, which returns to now when it ends */
+  private fxPreview = false;
+  /** Debug preview: the rest of this year, filling in quickly before the finale */
+  private preview: { t: number; queue: { slot: number; type: number }[]; added: number; temp: ParticleContainer } | null = null;
 
   // ---- Opening
   private reveal = 1;
@@ -225,6 +233,7 @@ export class YearScene {
     });
 
     this.placeRowLabels(pad);
+    this.endPreview();
     this.endFx();
     this.placeSlots();
     this.buildSlots();
@@ -448,13 +457,45 @@ export class YearScene {
     this.drawField();
   }
 
+  /**
+   * Before a year's finale, put in its last hours: any still flying or filling
+   * in, and any that ended while the picture wasn't being drawn (scrolled away
+   * or a hidden tab). The finale then always has the whole year.
+   */
+  private closeYear(): void {
+    for (let i = 0; i < FLIGHTS; i++) {
+      if (!this.hours.active[i]) continue;
+      this.addDiscDot(this.fSlot[i], this.fType[i]);
+      this.hours.release(i);
+    }
+    const end = (this.yearIndex + 1) * YEAR_HOURS;
+    DATA_TYPES.forEach((type, t) => {
+      if (this.fillAt[t] >= 0) {
+        this.addDiscDot(this.fillSlot[t], t);
+        this.fillAt[t] = -1;
+      }
+      // Hours of this type that completed before the year ended
+      const last = Math.ceil(type.share * end - 1e-9) - 1;
+      for (; this.lastK[t] < last; this.lastK[t]++) this.addDiscDot(this.nextSlot(t), t);
+    });
+  }
+
+  /** Every hour in the disc, plus any flying or filling in, as dots for a finale */
+  private yearDots(): FxDot[] {
+    const dots: FxDot[] = (this.disc.particleChildren as Particle[]).map((p, i) => ({ x: p.x, y: p.y, tint: p.tint, alpha: p.alpha, type: this.partType[i] }));
+    const add = (slot: number, type: number) =>
+      dots.push({ x: this.kx[slot], y: this.ky[slot], tint: DATA_TYPES[type].color, alpha: DATA_TYPES[type].alpha, type });
+    for (let i = 0; i < FLIGHTS; i++) if (this.hours.active[i]) add(this.fSlot[i], this.fType[i]);
+    DATA_TYPES.forEach((_, t) => this.fillAt[t] >= 0 && add(this.fillSlot[t], t));
+    return dots;
+  }
+
   /** A year of recording is complete: celebrate, then start the next one */
   private completeYear(T: number, celebrate: boolean): void {
+    this.endPreview();
+    const dots = celebrate ? this.yearDots() : [];
     this.hours.releaseAll();
     this.fillAt.fill(-1);
-    const dots: FxDot[] = celebrate
-      ? (this.disc.particleChildren as Particle[]).map((p, i) => ({ x: p.x, y: p.y, tint: p.tint, alpha: p.alpha, type: this.partType[i] }))
-      : [];
     this.endFx();
     this.buildYear(T);
     this.onYearComplete(this.fieldCount);
@@ -464,9 +505,17 @@ export class YearScene {
     const newest = this.fieldParts[this.fieldCount - 1];
     if (newest) newest.alpha = 0;
     this.field.update();
+    const target = this.fieldPos(this.fieldCount - 1);
+    this.startFx(dots, target, this.fieldCount, false, () => {
+      if (newest) newest.alpha = 0.9;
+      this.field.update();
+      this.ripples.push({ x: target.x, y: target.y, age: 0 });
+    });
+  }
+
+  private startFx(dots: FxDot[], target: { x: number; y: number }, years: number, preview: boolean, onLand: () => void): void {
     this.slots.alpha = 0;
     this.disc.alpha = 0;
-    const target = this.fieldPos(this.fieldCount - 1);
     const fx = new Celebration(
       this.celebration,
       {
@@ -483,25 +532,81 @@ export class YearScene {
         tx: target.x,
         ty: target.y,
         tr: this.fieldPitch * 0.38,
-        years: this.fieldCount,
+        years,
       },
       dots,
       this.ctx.tex,
+      this.ctx.renderer,
     );
-    fx.onLand = () => {
-      if (newest) newest.alpha = 0.9;
-      this.field.update();
-      this.ripples.push({ x: target.x, y: target.y, age: 0 });
-    };
+    fx.onLand = onLand;
     this.fxLayer.addChild(fx.root);
     this.fx = fx;
+    this.fxPreview = preview;
     this.guideG.visible = this.fieldG.visible = !fx.hidesGuides;
+  }
+
+  /**
+   * Debug: fill the rest of this year quickly, play the finale into the
+   * current year's slot, then sweep back to where the year really is. The
+   * live clock, counts and dataset are never touched.
+   */
+  previewFinale(): void {
+    if (this.fx || this.preview) return;
+    const queue: { slot: number; type: number; key: number }[] = [];
+    DATA_TYPES.forEach((_, t) => {
+      const list = this.typeSlots[t];
+      for (let j = this.taken[t]; j < list.length; j++) queue.push({ slot: list[j], type: t, key: this.kKey[list[j]] });
+    });
+    queue.sort((a, b) => a.key - b.key);
+    const temp = new ParticleContainer({ dynamicProperties: STATIC, texture: this.ctx.tex });
+    this.root.addChildAt(temp, this.root.getChildIndex(this.disc) + 1);
+    this.preview = { t: 0, queue, added: 0, temp };
+  }
+
+  private stepPreview(dt: number): void {
+    const pv = this.preview;
+    if (!pv) return;
+    pv.t += dt;
+    const shown = Math.floor(pv.queue.length * ease(Math.min(1, pv.t / PREVIEW_FILL_S)));
+    const s = this.dotR / TEX_RADIUS;
+    for (; pv.added < shown; pv.added++) {
+      const q = pv.queue[pv.added];
+      const t = DATA_TYPES[q.type];
+      pv.temp.addParticle(
+        new Particle({ texture: this.ctx.tex, x: this.kx[q.slot], y: this.ky[q.slot], anchorX: 0.5, anchorY: 0.5, scaleX: s, scaleY: s, tint: t.color, alpha: t.alpha }),
+      );
+    }
+    if (pv.t < PREVIEW_FILL_S + 0.25) return;
+    // Full: the finale gets every hour of the year, landing in the slot this year will take
+    const dots = this.yearDots();
+    for (const q of pv.queue) dots.push({ x: this.kx[q.slot], y: this.ky[q.slot], tint: DATA_TYPES[q.type].color, alpha: DATA_TYPES[q.type].alpha, type: q.type });
+    this.endPreview();
+    const target = this.fieldPos(this.fieldCount);
+    this.startFx(dots, target, this.fieldCount + 1, true, () => this.ripples.push({ x: target.x, y: target.y, age: 0 }));
+  }
+
+  private endPreview(): void {
+    if (!this.preview) return;
+    this.preview.temp.destroy();
+    this.preview = null;
+  }
+
+  /** Hide the hours already in the disc, then fill them in, in the order the year fills */
+  private fillIntro(delay: number): void {
+    const kids = this.disc.particleChildren;
+    kids.forEach((p) => (p.scaleX = p.scaleY = 0));
+    this.introOrder = kids.map((_, i) => i).sort((a, b) => this.partKey[a] - this.partKey[b]);
+    this.revealed = 0;
+    this.introT = 0;
+    this.introDelay = delay;
+    this.dirty = true;
   }
 
   private endFx(): void {
     if (!this.fx) return;
     this.fx.destroy();
     this.fx = null;
+    this.fxPreview = false;
     this.guideG.visible = this.fieldG.visible = true;
     this.slots.alpha = 1;
     this.disc.alpha = 1;
@@ -531,14 +636,7 @@ export class YearScene {
       layer.alpha = 0;
       tw.add(0.73, ease, (v) => (layer.alpha = v), { delay: 0.35, owner: this });
     }
-    // Hide the hours already in the disc, then fill them in, in the order the year fills
-    const kids = this.disc.particleChildren;
-    kids.forEach((p) => (p.scaleX = p.scaleY = 0));
-    this.introOrder = kids.map((_, i) => i).sort((a, b) => this.partKey[a] - this.partKey[b]);
-    this.revealed = 0;
-    this.introT = 0;
-    this.introDelay = 0.4;
-    this.dirty = true;
+    this.fillIntro(0.4);
     this.emitDelay = 0.6;
   }
 
@@ -581,7 +679,9 @@ export class YearScene {
     const T = this.ctx.clock.total();
     const yi = Math.floor(T / YEAR_HOURS);
     if (yi !== this.yearIndex) {
-      this.completeYear(T, yi === this.yearIndex + 1);
+      const next = yi === this.yearIndex + 1;
+      if (next) this.closeYear();
+      this.completeYear(T, next);
       return;
     }
     const fresh: number[] = [];
@@ -604,6 +704,7 @@ export class YearScene {
     this.time += dt;
     const T = this.ctx.clock.total();
     this.sync();
+    this.stepPreview(dt);
 
     // Hour rings: how much of the current hour of each type has arrived, on a solid base
     const g = this.hoppersG.clear();
@@ -651,7 +752,9 @@ export class YearScene {
     const gg = this.guideG.clear();
     const rr = this.R + 10;
     gg.circle(this.cx, this.cy, rr).stroke({ width: 3, color: TRACK_SOLID });
-    const arc = clamp((T - this.yearIndex * YEAR_HOURS) / YEAR_HOURS, 0, 1) * shown;
+    let arc = clamp((T - this.yearIndex * YEAR_HOURS) / YEAR_HOURS, 0, 1) * shown;
+    if (this.preview) arc += (1 - arc) * ease(Math.min(1, this.preview.t / PREVIEW_FILL_S));
+    if (this.fx && this.fxPreview) arc = 1;
     if (arc > 0.002) {
       gg.moveTo(this.cx, this.cy - rr)
         .arc(this.cx, this.cy, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * arc)
@@ -728,10 +831,15 @@ export class YearScene {
 
     // The year-complete show, then the new year fades in
     if (this.fx && !this.fx.update(dt)) {
+      const wasPreview = this.fxPreview;
       this.endFx();
-      for (const layer of [this.slots, this.disc]) {
-        layer.alpha = 0;
-        this.ctx.tweens.add(0.6, ease, (a) => (layer.alpha = a), { owner: this });
+      if (wasPreview) {
+        this.fillIntro(0.15);
+      } else {
+        for (const layer of [this.slots, this.disc]) {
+          layer.alpha = 0;
+          this.ctx.tweens.add(0.6, ease, (a) => (layer.alpha = a), { owner: this });
+        }
       }
     }
 

@@ -115,13 +115,13 @@ export const DATA_TYPES: readonly DataType[] = TYPES;
 export const MAX_SHARE = Math.max(...DATA_TYPES.map((t) => t.share));
 
 /** The animation when a year of recording completes */
-export type CelebrationId = 'orbit' | 'portal' | 'spin' | 'fireworks' | 'number';
+export type CelebrationId = 'orbit' | 'portal' | 'spin' | 'collider' | 'number';
 export const CELEBRATION: CelebrationId = 'orbit';
 export const CELEBRATIONS: readonly { id: CelebrationId; label: string }[] = [
   { id: 'orbit', label: 'Orbit' },
   { id: 'portal', label: 'Portal' },
   { id: 'spin', label: 'Spin out' },
-  { id: 'fireworks', label: 'Fireworks' },
+  { id: 'collider', label: 'Collider' },
   { id: 'number', label: 'Year count' },
 ];
 

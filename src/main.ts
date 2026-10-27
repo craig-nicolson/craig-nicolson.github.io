@@ -20,6 +20,9 @@ import { TEX_RADIUS } from './scene/shapes';
 import type { StageLabel } from './scene/types';
 import { YearScene } from './scene/year';
 
+// Tells the safeguard in index.html that the page's code has started
+(window as unknown as { __waveformStarted?: boolean }).__waveformStarted = true;
+
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const debugMode = new URLSearchParams(location.search).has('debug') || location.hash === '#debug';
 
@@ -165,16 +168,13 @@ function buildDebug(root: HTMLElement, clock: LiveClock, scene: YearScene, refil
     markFx(id);
   });
   markFx(scene.celebration);
-  const finish = document.createElement('button');
-  finish.type = 'button';
-  finish.className = 'btn';
-  finish.textContent = 'Finish this year';
-  // Jump to just before the year completes, so the last hours land and the show starts
-  finish.addEventListener('click', () => {
-    const end = (Math.floor(clock.total() / YEAR_HOURS) + 1) * YEAR_HOURS;
-    clock.jumpToTotal(end - clock.rate() * clock.speed * 1.5);
-  });
-  fxRow.append(finish);
+  const finale = document.createElement('button');
+  finale.type = 'button';
+  finale.className = 'btn';
+  finale.textContent = 'Play year finale';
+  // Fills the rest of this year, plays the finale, then returns to now. The live clock is untouched.
+  finale.addEventListener('click', () => scene.previewFinale());
+  fxRow.append(finale);
 }
 
 async function boot(): Promise<void> {
@@ -232,7 +232,7 @@ async function boot(): Promise<void> {
   const tex = app.renderer.generateTexture({ target: disc, resolution: 2, antialias: true });
   const tweens = new Tweens();
   const quality = new Quality();
-  const scene = new YearScene({ clock, tweens, tex, quality: () => quality.factor }, YEAR_FILL, CELEBRATION);
+  const scene = new YearScene({ clock, tweens, tex, renderer: app.renderer, quality: () => quality.factor }, YEAR_FILL, CELEBRATION);
   app.stage.addChild(scene.root);
   app.stage.x = off;
   scene.setBounds(-off, cw - off);

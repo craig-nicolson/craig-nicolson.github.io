@@ -8,7 +8,7 @@ An animated page showing 15,000 hours of waveform recordings a day flowing into 
 
 Row labels ("1 hour", "1 year", each "of recording") point at their rows. On narrow screens the hour rings shift right to make room, and the year label sits above the circle.
 
-When a year completes, a short animation plays as the year lands in the dataset.
+When a year completes, a short animation plays as the year lands in the dataset. Its last hours are always put in first, even if the year ended while the picture was scrolled away, so the animation always has the whole year.
 
 The page runs on the real clock, counted on from the dataset's size at a set time, so every visitor sees the same live state. Waveform names are typical ICU examples standing in for the real types.
 
@@ -31,7 +31,7 @@ Add `#debug` (or `?debug`) to the address for:
 
 - **Speed:** real time, 10×, 100× or 1,000×. At 1,000× a year of recording fills in under a minute.
 - **Fill:** clockwise, or from the centre out.
-- **When a year completes:** Orbit, Portal, Spin out, Fireworks or Year count, plus a "Finish this year" button that jumps to just before the year ends so you can watch it.
+- **When a year completes:** Orbit, Portal, Spin out, Collider or Year count, plus a **Play year finale** button. It fills the rest of the current year quickly, plays the chosen finale into this year's slot, then sweeps back to where the year really is. The live clock, counts and dataset are never changed, and it works whether or not the picture is in view.
 
 ## The data, and updating it
 
@@ -77,7 +77,7 @@ Two simplifications to know about:
 
 - `src/main.ts`: the page. Controls, live numbers, labels, debug panel, pausing.
 - `src/scene/year.ts`: the picture. Streams, hour rings, the year disc and the dataset.
-- `src/scene/celebration.ts`: the five year-complete animations.
+- `src/scene/celebration.ts`: the five year-complete animations. Collider draws long-exposure trails with two textures that take turns.
 - `src/clock.ts`: the live clock and dataset total, adding up the modelled rate (with its daily and weekly shape, in UK time) since `asOf`.
 - `src/flow.json`: the data. `scripts/check-flow.mjs` checks it.
 - `src/config.ts`: design settings, and the checks that tidy `flow.json` on load.
@@ -105,11 +105,13 @@ The year disc puts its 8,760 hours on a sunflower spiral, which spreads them eve
 
 ### GitHub Pages
 
-The repo includes `.github/workflows/deploy.yml`, which checks the data, builds the site and publishes it on every push to `main`.
+The repo includes `.github/workflows/deploy.yml`, which checks the data, builds the site and publishes it on every push to `main` (or `master`).
 
 1. Push the project to a GitHub repo, with `package-lock.json` included.
 2. In the repo, go to **Settings → Pages → Build and deployment** and set **Source** to **GitHub Actions**.
 3. Push to `main`, or run the workflow from the **Actions** tab.
+
+**Publish the build, never the source.** The repo's own `index.html` loads `src/main.ts`, which only works through Vite. If the live site shows a blank picture and the browser console mentions `src/main.ts` or a "video/mp2t" MIME type, GitHub is publishing the source: check that **Source** is **GitHub Actions**, that the latest run in the **Actions** tab succeeded, and that built files weren't copied over the source (or the other way round).
 
 The site works at `https://<user>.github.io/<repo>/`, at the root of a user site, or on a custom domain, because the build uses relative paths. For a custom domain, set it under **Settings → Pages**; no `CNAME` file is needed when deploying with Actions.
 

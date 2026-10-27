@@ -171,14 +171,6 @@ export class LiveClock {
     return this.totalAt(this.now());
   }
 
-  /** Move forward until the dataset reaches this many hours (debug only) */
-  jumpToTotal(hours: number): void {
-    for (let i = 0; i < 4; i++) {
-      const gap = hours - this.total();
-      if (gap <= 0) return;
-      this.baseWall += (gap / this.rate()) * 1000;
-    }
-  }
 
   /** Seconds since the page opened, on this clock */
   get secondsHere(): number {

@@ -1,4 +1,4 @@
-import { Container, Graphics, Particle, ParticleContainer, type Texture } from 'pixi.js';
+import { Container, Graphics, Particle, ParticleContainer, RenderTexture, Sprite, type Renderer, type Texture } from 'pixi.js';
 import { DATA_TYPES, OFF_WHITE, type CelebrationId } from '../config';
 import { ease } from '../ease';
 import * as fmt from '../format';
@@ -34,36 +34,22 @@ export interface FxDot {
 }
 
 /** Seconds. The portal ends when its pulse has passed, so its figure is only a limit. */
-const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, spin: 5.3, fireworks: 6.2, number: 5.4 };
+const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, spin: 5.3, collider: 7.2, number: 5.4 };
 /** When the finished year appears in the dataset */
-const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, spin: 1, fireworks: 0.9, number: 0.97 };
-/** Fireworks: the year loads into shells, which rise and burst across the window */
-const FW = {
-  /** Seconds for a shell's hours to gather at its launch point */
-  gather: 0.55,
-  /** Seconds from launch to burst */
-  rise: 0.8,
-  /** Share of each shell's hours that become the rocket's exhaust rather than the burst */
-  exhaust: 0.18,
-  /** Launches spread over this many seconds; the last three go up together */
-  spread: 2.1,
-};
-type ShellStyle = 'peony' | 'willow' | 'crackle';
-/** Burst style by waveform: full spheres, drooping willow, slow twinkle */
-const STYLE: ShellStyle[] = ['peony', 'willow', 'peony', 'crackle', 'crackle'];
-interface Shell {
-  type: number;
-  launch: number;
-  lx: number;
-  ly: number;
-  bx: number;
-  by: number;
-  drift: number;
-  reach: number;
-  drag: number;
-  gravity: number;
-  style: ShellStyle;
-}
+const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, spin: 1, collider: 1, number: 0.97 };
+/** Collider: when the bunches are kicked off the ring, when they meet, and when the debris is swept away (seconds) */
+const KICK_AT = 2.6;
+const COLLIDE_AT = 2.85;
+const SWEEP_AT = 5.7;
+/** How hard the magnetic field turns the heaviest type, in radians a second; lighter types turn faster */
+const FIELD = 3.2;
+/** Each type's charge and mass in the collision: the sign sets which way it curls, the mass how tightly */
+const CHARGE = [1, -1, 1, -1, 1];
+const MASS = [1, 0.75, 0.6, 0.45, 0.35];
+/** Energy lost to the field each second, so tracks spiral inwards */
+const TRACK_DRAG = 0.7;
+/** How fast the long-exposure trails fade; higher means shorter trails */
+const TRAIL_FADE = 7;
 /** Spin out: top spin in radians a second, and the moment the heap starts pouring away */
 const SPIN_MAX = 10;
 const POUR_AT = 3.6;
@@ -111,9 +97,13 @@ export class Celebration {
   private absorbed = 0;
   private gone = new Uint8Array(0);
   private pulseAt = 0;
-  private shells: Shell[] = [];
-  private shellOf = new Uint16Array(0);
-  private isExhaust = new Uint8Array(0);
+  // Collider: long-exposure trails. Two textures take turns: each frame copies the last one
+  // a little fainter, then draws the particles on top, so trails fade to clear
+  private trails: [RenderTexture, RenderTexture] | null = null;
+  private trailHolder = new Container();
+  private copy = new Sprite();
+  private copyHolder = new Container();
+  private trailView = new Sprite();
   /** Things this show draws itself, so the scene hides its own versions */
   readonly hidesGuides: boolean;
   onLand: () => void = () => {};
@@ -123,13 +113,13 @@ export class Celebration {
     private s: FxStage,
     dots: FxDot[],
     tex: Texture,
+    private renderer: Renderer,
   ) {
     const n = (this.n = dots.length);
     this.dur = DURATION[id];
     this.base = s.dotR / TEX_RADIUS;
     this.pc = new ParticleContainer({
-      // Fireworks stretch sparks along their path, so only they need rotation
-      dynamicProperties: { position: true, vertex: true, color: true, rotation: id === 'fireworks', uvs: false },
+      dynamicProperties: { position: true, vertex: true, color: true, rotation: false, uvs: false },
       texture: tex,
     });
     this.x0 = new Float32Array(n);
@@ -145,7 +135,20 @@ export class Celebration {
       this.parts.push(p);
       this.pc.addParticle(p);
     });
-    this.root.addChild(this.pc, this.g);
+    if (id === 'collider') {
+      // Particles draw into a texture as wide as the canvas, which keeps their trails
+      const w = Math.ceil(s.x1 - s.x0);
+      const h = Math.ceil(s.h);
+      const make = () => RenderTexture.create({ width: w, height: h, resolution: renderer.resolution });
+      this.trails = [make(), make()];
+      this.trailHolder.x = -s.x0;
+      this.trailHolder.addChild(this.pc);
+      this.copyHolder.addChild(this.copy);
+      this.trailView.x = s.x0;
+      this.root.addChild(this.trailView, this.g);
+    } else {
+      this.root.addChild(this.pc, this.g);
+    }
     this.hidesGuides = id === 'portal';
     this.setup();
   }
@@ -202,65 +205,17 @@ export class Celebration {
         delay[i] = OPEN_S + (DRAIN_S * (s.ring - a[i])) / (2 * s.ring) + rnd(0, 0.05);
       }
       this.gone = new Uint8Array(n);
-    } else if (this.id === 'fireworks') {
-      // Each waveform gets shells in proportion to its share, so every shell holds about the same hours
-      const order: number[] = [];
-      DATA_TYPES.forEach((t, ty) => {
-        for (let k = 0; k < Math.max(1, Math.round(t.share * 10)); k++) order.push(ty);
-      });
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
-      const m = order.length;
-      const span = s.x1 - s.x0;
-      const slots = order.map((_, k) => s.x0 + span * (0.12 + (0.76 * (k + 0.5)) / m));
-      for (let i = slots.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [slots[i], slots[j]] = [slots[j], slots[i]];
-      }
-      this.shells = order.map((ty, k) => {
-        const style = STYLE[ty % STYLE.length];
-        const bx = slots[k] + rnd(-0.03, 0.03) * span;
-        const by = s.h * rnd(0.12, 0.38);
-        // The finale: the last three launch almost together
-        const launch = FW.gather + (k < m - 3 ? (FW.spread * k) / Math.max(1, m - 3) + rnd(-0.08, 0.08) : FW.spread + rnd(0, 0.2));
-        const reach = Math.max(40, Math.min(s.R * rnd(0.55, 0.8), bx - s.x0 - 16, s.x1 - bx - 16, by - 16));
-        return {
-          type: ty,
-          launch,
-          lx: bx + rnd(-0.04, 0.04) * span,
-          ly: s.h - 18,
-          bx,
-          by,
-          drift: rnd(-1, 1) * 18,
-          reach,
-          style,
-          drag: style === 'willow' ? 1.3 : 2.6,
-          gravity: s.R * (style === 'willow' ? 1.5 : 0.9),
-        };
-      });
-      // Deal each type's hours round its shells
-      const mine = DATA_TYPES.map((_, ty) => this.shells.map((sh, k) => (sh.type === ty ? k : -1)).filter((k) => k >= 0));
-      const dealt = new Int32Array(DATA_TYPES.length);
-      this.shellOf = new Uint16Array(n);
-      this.isExhaust = new Uint8Array(n);
-      const [phi, sp, life, lag, size, jit, ph] = (this.p = this.params(7));
+    } else if (this.id === 'collider') {
+      // Two bunches, alternate hours in each, spread a little along and across the ring
+      const [ang, rad, delay, , , px, py] = (this.p = this.params(9));
       for (let i = 0; i < n; i++) {
-        const ty = this.type[i];
-        const list = mine[ty];
-        const k = list[dealt[ty]++ % list.length];
-        const sh = this.shells[k];
-        this.shellOf[i] = k;
-        this.isExhaust[i] = Math.random() < FW.exhaust ? 1 : 0;
-        phi[i] = rnd(0, Math.PI * 2);
-        sp[i] = Math.sqrt(Math.random());
-        life[i] = sh.style === 'willow' ? rnd(2.2, 3) : sh.style === 'crackle' ? rnd(1, 1.8) : rnd(1.3, 2);
-        lag[i] = rnd(0, 0.35);
-        size[i] = rnd(1.6, 2.6);
-        jit[i] = rnd(-1, 1);
-        ph[i] = rnd(0, Math.PI * 2);
+        ang[i] = (Math.random() + Math.random() + Math.random() - 1.5) * 0.16;
+        rad[i] = rnd(-4, 4);
+        delay[i] = rnd(0, 0.3);
+        px[i] = this.x0[i];
+        py[i] = this.y0[i];
       }
+      this.state = new Uint8Array(n);
     } else if (this.id === 'orbit') {
       // Each type's hours spread evenly round its own ring
       const [phi0] = (this.p = this.params(1));
@@ -331,7 +286,7 @@ export class Celebration {
     this.g.clear();
     if (this.id === 'spin') this.spin(Math.min(dt, 1 / 30));
     else if (this.id === 'portal') this.portal();
-    else if (this.id === 'fireworks') this.fireworks();
+    else if (this.id === 'collider') this.collider(Math.min(dt, 1 / 30));
     else if (this.id === 'orbit') this.orbit(u);
     else this.number(u);
     const lands = this.id === 'portal' ? this.pulseAt > 0 && this.time >= this.pulseAt + 0.35 : u >= LANDS[this.id];
@@ -454,96 +409,96 @@ export class Celebration {
   }
 
   /**
-   * The year loads into shells at the foot of the window. Each rises as a
-   * bright head with a sparkling exhaust and bursts in its waveform's colour:
-   * sparks start white-hot, streak along their path, slow, droop and fade.
+   * The ring becomes a particle accelerator. The year splits into two bunches
+   * that race round it in opposite directions, faster and faster, then are
+   * kicked inwards to collide at the centre. The debris sprays out through a
+   * magnetic field: each waveform has its own charge and mass, so it curls its
+   * own way and spirals down as it loses energy, like tracks in a bubble
+   * chamber. Long-exposure trails record every path.
    */
-  private fireworks(): void {
-    const t = this.time;
-    const [phi, sp, life, lag, size, jit, ph] = this.p;
-    const base = this.base;
+  private collider(dt: number): void {
+    const { s, time: t } = this;
+    const [ang, rad, delay, kx, ky, px, py, vx, vy] = this.p;
+    const omega = 1.5 + 16 * seg(t, 0.3, KICK_AT) ** 2;
+    this.spinAngle += omega * dt;
+    const stretch = 1 + 0.8 * seg(t, 0.5, KICK_AT);
+    const drag = Math.exp(-TRACK_DRAG * dt);
     for (let i = 0; i < this.n; i++) {
-      const sh = this.shells[this.shellOf[i]];
-      const p = this.parts[i];
-      const colour = DATA_TYPES[this.type[i]].color;
-      const rt = t - sh.launch;
-
-      // Loading: the hours stream down to their shell's launch point
-      if (rt < 0) {
-        const e = ease(seg(t, sh.launch - FW.gather, sh.launch));
-        p.x = lerp(this.x0[i], sh.lx + jit[i] * 3, e);
-        p.y = lerp(this.y0[i], sh.ly, e);
-        p.rotation = 0;
-        p.scaleX = p.scaleY = base * lerp(1, 1.3, e);
-        p.alpha = this.a0[i];
-        p.tint = colour;
-        continue;
+      const type = this.type[i] % CHARGE.length;
+      if (this.state[i] === 0) {
+        // Join a bunch and go round the ring
+        const a = (i & 1 ? Math.PI - this.spinAngle : this.spinAngle) + ang[i] * stretch;
+        const e = ease(seg(t, delay[i], delay[i] + 0.8));
+        px[i] = lerp(this.x0[i], s.cx + Math.cos(a) * (s.ring + rad[i]), e);
+        py[i] = lerp(this.y0[i], s.cy + Math.sin(a) * (s.ring + rad[i]), e);
+        if (t < KICK_AT) {
+          this.set(i, px[i], py[i], 1, 1);
+          continue;
+        }
+        kx[i] = px[i];
+        ky[i] = py[i];
+        this.state[i] = 1;
       }
-
-      const path = (u: number) => {
-        const f = 1 - (1 - u) ** 2;
-        return { x: lerp(sh.lx, sh.bx, f) + Math.sin(Math.PI * u) * sh.drift, y: lerp(sh.ly, sh.by, f) };
-      };
-
-      if (this.isExhaust[i]) {
-        // Exhaust: strung out behind the head, spreading and sagging as it ages, then dying away
-        const u = Math.max(0, Math.min(1, (rt - lag[i]) / FW.rise));
-        const at = path(u);
-        const age = lag[i] / 0.35;
-        p.x = at.x + jit[i] * (2 + 9 * age);
-        p.y = at.y + 0.5 * sh.gravity * lag[i] * lag[i] * 2;
-        p.rotation = Math.PI / 2;
-        p.scaleX = base * size[i] * (1.6 - age);
-        p.scaleY = base * size[i] * 0.55;
-        p.tint = age < 0.25 ? OFF_WHITE : colour;
-        p.alpha = this.a0[i] * (1 - age * 0.6) * (1 - seg(rt, FW.rise, FW.rise + 0.7)) * (rt - lag[i] < 0 ? 0 : 1);
-        continue;
+      if (this.state[i] === 1) {
+        // Kicked off the ring, accelerating into the centre
+        if (t < COLLIDE_AT) {
+          const f = seg(t, KICK_AT, COLLIDE_AT) ** 2;
+          this.set(i, lerp(kx[i], s.cx, f), lerp(ky[i], s.cy, f), 1, 1);
+          continue;
+        }
+        // Collision: fly off in any direction, at a speed that keeps each spiral inside the picture
+        const w = (CHARGE[type] * FIELD) / MASS[type];
+        const speed = Math.abs(w) * s.R * 0.8 * Math.random() ** 0.6;
+        const phi = rnd(0, Math.PI * 2);
+        vx[i] = Math.cos(phi) * speed;
+        vy[i] = Math.sin(phi) * speed;
+        px[i] = s.cx;
+        py[i] = s.cy;
+        this.state[i] = 2;
       }
-
-      // Payload: rides up packed into the rocket's head
-      if (rt < FW.rise) {
-        const at = path(rt / FW.rise);
-        p.x = at.x + jit[i] * 2;
-        p.y = at.y + Math.cos(phi[i]) * 2;
-        p.rotation = 0;
-        p.scaleX = p.scaleY = base * 1.4;
-        p.tint = OFF_WHITE;
-        p.alpha = this.a0[i];
-        continue;
+      if (this.state[i] === 2) {
+        if (t < SWEEP_AT + delay[i]) {
+          // The field turns each track by a fixed angle a second; drag tightens it into a spiral
+          const turn = ((CHARGE[type] * FIELD) / MASS[type]) * dt;
+          const c = Math.cos(turn);
+          const sn = Math.sin(turn);
+          const nx = (vx[i] * c - vy[i] * sn) * drag;
+          vy[i] = (vx[i] * sn + vy[i] * c) * drag;
+          vx[i] = nx;
+          px[i] += vx[i] * dt;
+          py[i] += vy[i] * dt;
+          this.set(i, px[i], py[i], 1.1, 1);
+          continue;
+        }
+        kx[i] = px[i];
+        ky[i] = py[i];
+        this.state[i] = 3;
       }
-
-      // Burst: drag and gravity, worked out exactly for any moment
-      const tau = rt - FW.rise;
-      const k = sh.drag;
-      const v = sh.reach * k * sp[i];
-      const vx = Math.cos(phi[i]) * v;
-      const vy = Math.sin(phi[i]) * v - sh.reach * 0.35;
-      const decay = Math.exp(-k * tau);
-      const e = (1 - decay) / k;
-      p.x = sh.bx + vx * e;
-      p.y = sh.by + vy * e + (sh.gravity / k) * (tau - e);
-      const nowX = vx * decay;
-      const nowY = vy * decay + (sh.gravity / k) * (1 - decay);
-      const speed = Math.hypot(nowX, nowY);
-      p.rotation = Math.atan2(nowY, nowX);
-      const fade = 1 - seg(tau, life[i] * 0.45, life[i]);
-      const twinkle = sh.style === 'crackle' ? 0.65 + 0.35 * Math.sin(tau * Math.PI * 5 + ph[i]) : 1;
-      const grow = sh.style === 'willow' ? 1.25 : 1;
-      p.scaleY = base * size[i] * lerp(1, 0.55, seg(tau, 0, life[i])) * grow;
-      p.scaleX = p.scaleY * (1 + Math.min(sh.style === 'willow' ? 7 : 5, speed * 0.02));
-      p.tint = tau < 0.12 ? OFF_WHITE : colour;
-      p.alpha = this.a0[i] * fade * twinkle;
+      // The field switches off and the debris is swept into the dataset
+      const e = ease(seg(t, SWEEP_AT + delay[i], SWEEP_AT + delay[i] + 0.9));
+      this.set(i, lerp(kx[i], s.tx, e), lerp(ky[i], s.ty, e), lerp(1.1, 0.4, e), 1 - seg(e, 0.85, 1));
     }
 
-    // Each rocket's head glows as it climbs
-    for (const sh of this.shells) {
-      const rt = t - sh.launch;
-      if (rt < 0 || rt >= FW.rise) continue;
-      const u = rt / FW.rise;
-      const f = 1 - (1 - u) ** 2;
-      const x = lerp(sh.lx, sh.bx, f) + Math.sin(Math.PI * u) * sh.drift;
-      const y = lerp(sh.ly, sh.by, f);
-      this.g.circle(x, y, 4 + 2 * u).fill({ color: OFF_WHITE, alpha: 0.95 });
+    // The collision: a flash and two shockwaves
+    const hit = t - COLLIDE_AT;
+    if (hit >= 0 && hit < 1) {
+      const flash = 1 - seg(hit, 0.05, 0.5);
+      if (flash > 0) this.g.circle(s.cx, s.cy, s.R * 0.32 * (1 - (1 - seg(hit, 0, 0.12)) ** 2)).fill({ color: OFF_WHITE, alpha: 0.9 * flash });
+      [OFF_WHITE, DATA_TYPES[0].color].forEach((color, k) => {
+        const e = seg(hit, k * 0.08, k * 0.08 + 0.8);
+        if (e > 0 && e < 1) this.g.circle(s.cx, s.cy, s.R * 1.6 * (1 - (1 - e) ** 3)).stroke({ width: lerp(6, 1.5, e), color, alpha: 0.8 * (1 - e) });
+      });
+    }
+
+    // Long exposure: copy last frame's trails a little fainter, draw this frame on top, then swap
+    if (this.trails) {
+      const [front, back] = this.trails;
+      this.copy.texture = front;
+      this.copy.alpha = Math.exp(-TRAIL_FADE * lerp(1, 3, seg(t, 6.2, 7.1)) * dt);
+      this.renderer.render({ container: this.copyHolder, target: back, clear: true });
+      this.renderer.render({ container: this.trailHolder, target: back, clear: false });
+      this.trails = [back, front];
+      this.trailView.texture = back;
     }
   }
 
@@ -672,5 +627,8 @@ export class Celebration {
 
   destroy(): void {
     this.root.destroy({ children: true });
+    this.trailHolder.destroy({ children: true });
+    this.copyHolder.destroy({ children: true });
+    this.trails?.forEach((t) => t.destroy(true));
   }
 }
