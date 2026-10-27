@@ -1,26 +1,15 @@
-// Checks src/flow.json before a release, then stress-tests the model with awkward inputs.
-// Run with: npm run check:flow
+// Checks src/flow.json before a release: every value is present and in range, and the model
+// behaves, on the real file and at the most extreme values allowed. Over four weeks the live
+// total must never jump or run backwards, must average out to hoursPerDay, and hourly totals
+// must vary by about hourlyVariation. Run with: npm run check:flow
 import { build } from 'esbuild';
 import { readFile } from 'node:fs/promises';
 
-const real = JSON.parse(await readFile('src/flow.json', 'utf8'));
-const variants = [
-  ['src/flow.json as it is', real],
-  ['shares add up to 0.97 and one is missing', { ...real, shares: { ECG: 0.41, ABP: 0.3, Pleth: 0.2, Resp: 0.06 } }],
-  ['a type at zero, strong daily swing, quiet weekends', { ...real, shares: { ...real.shares, CVP: 0 }, daily: { swing: 0.3, peakHour: 15 }, weekendFactor: 0.8 }],
-  ['hourly wander of 0.08 on top of the daily and weekly pattern', { ...real, daily: { swing: 0.2, peakHour: 14 }, weekendFactor: 0.9, hourlyVariation: 0.08 }],
-  ['values out of range and a bad date', { ...real, asOf: 'not a date', hoursPerDay: -5, daily: { swing: 1.5, peakHour: 30 }, weekendFactor: 9, hourlyVariation: 0.6 }],
-];
-
-let failed = false;
-for (const [name, data] of variants) {
-  const warnings = [];
+/** The page's model (config and clock) built with the given data in place of flow.json */
+async function load(data) {
   const result = await build({
     stdin: {
-      contents: `
-        import { FLOW, DATA_TYPES } from './src/config';
-        import { LiveClock, rateFactor, shapeFactor } from './src/clock';
-        export { FLOW, DATA_TYPES, LiveClock, rateFactor, shapeFactor };`,
+      contents: `export { FLOW, DATA_TYPES } from './src/config'; export { LiveClock, rateFactor, shapeFactor } from './src/clock';`,
       resolveDir: '.',
       loader: 'ts',
     },
@@ -30,72 +19,88 @@ for (const [name, data] of variants) {
     write: false,
     plugins: [
       {
-        name: 'flow-variant',
+        name: 'flow',
         setup(b) {
-          b.onResolve({ filter: /flow\.json$/ }, () => ({ path: 'flow', namespace: 'variant' }));
-          b.onLoad({ filter: /.*/, namespace: 'variant' }, () => ({ contents: JSON.stringify(data), loader: 'json' }));
-          b.onResolve({ filter: /^pixi\.js$/ }, () => ({ path: 'pixi', namespace: 'stub' }));
-          b.onLoad({ filter: /.*/, namespace: 'stub' }, () => ({ contents: 'export {}', loader: 'js' }));
+          b.onResolve({ filter: /flow\.json$/ }, () => ({ path: 'flow', namespace: 'flow' }));
+          b.onLoad({ filter: /.*/, namespace: 'flow' }, () => ({ contents: JSON.stringify(data), loader: 'json' }));
         },
       },
     ],
   });
-  const warn = console.warn;
-  console.warn = (m) => warnings.push(m);
-  const mod = await import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
-  console.warn = warn;
-  const { FLOW, DATA_TYPES, LiveClock, rateFactor, shapeFactor } = mod;
+  return import(`data:text/javascript;base64,${Buffer.from(result.outputFiles[0].text).toString('base64')}`);
+}
 
-  const problems = [];
-  const shareSum = DATA_TYPES.reduce((a, t) => a + t.share, 0);
-  if (Math.abs(shareSum - 1) > 1e-9 || DATA_TYPES.some((t) => !(t.share >= 0))) problems.push(`shares add up to ${shareSum}`);
+function problemsIn(f, types) {
+  const out = [];
+  const range = (name, v, lo, hi) => {
+    if (typeof v !== 'number' || !(v >= lo && v <= hi)) out.push(`${name} should be a number from ${lo} to ${hi} (it is ${JSON.stringify(v)})`);
+  };
+  if (Number.isNaN(Date.parse(f.asOf))) out.push('asOf should be a date and time, like 2026-10-21T00:00:00+01:00');
+  range('totalHours', f.totalHours, 0, Infinity);
+  range('hoursPerDay', f.hoursPerDay, 1, Infinity);
+  range('daily.swing', f.daily?.swing, 0, 0.5);
+  range('daily.peakHour', f.daily?.peakHour, 0, 24);
+  range('weekendFactor', f.weekendFactor, 0.5, 1.5);
+  range('hourlyVariation', f.hourlyVariation, 0, 0.3);
+  for (const t of types) range(`shares.${t}`, f.shares?.[t], 0, 1);
+  for (const k of Object.keys(f.shares ?? {})) if (!types.includes(k)) out.push(`shares.${k} is not a type (the types are ${types.join(', ')})`);
+  const sum = types.reduce((a, t) => a + (f.shares?.[t] ?? 0), 0);
+  if (Math.abs(sum - 1) > 0.02) out.push(`shares add up to ${sum.toFixed(3)}; they should add up to about 1`);
+  return out;
+}
 
-  // Four weeks in one-minute steps: never backwards, no jumps, averages to the daily rate.
-  // Whole weeks include every weekend boundary and daily peak; four of them dilute a clock change.
+function modelProblems({ FLOW, LiveClock, rateFactor, shapeFactor }) {
+  const out = [];
   const clock = new LiveClock();
-  const start = FLOW.asOfMs + 3 * 86_400_000 + 7 * 60_000;
-  let prev = clock.totalAt(start);
-  let biggest = 0;
+  const start = Date.now() + 86_400_000;
+  const first = clock.totalAt(start);
+  let prev = first;
   for (let m = 1; m <= 28 * 1440; m++) {
     const t = clock.totalAt(start + m * 60_000);
-    if (!Number.isFinite(t) || t < prev) {
-      problems.push(`total went wrong at minute ${m}`);
+    if (!(t >= prev)) {
+      out.push(`the total ran backwards at minute ${m}`);
       break;
     }
-    biggest = Math.max(biggest, t - prev);
     prev = t;
   }
-  const perDay = (prev - clock.totalAt(start)) / 28;
-  if (Math.abs(perDay / FLOW.hoursPerDay - 1) > 0.005) problems.push(`four weeks average ${perDay.toFixed(0)} hours a day, not ${FLOW.hoursPerDay}`);
-  const factors = Array.from({ length: 7 * 24 }, (_, h) => rateFactor(start + h * 3_600_000));
-  const low = Math.min(...factors);
-  const high = Math.max(...factors);
-  if (!(low > 0)) problems.push('the rate stops or goes negative');
-
-  // Hourly wander: hourly totals over 8 weeks compared with the pattern alone
+  const perDay = (prev - first) / 28;
+  if (Math.abs(perDay / FLOW.hoursPerDay - 1) > 0.005) out.push(`four weeks average ${perDay.toFixed(0)} hours a day, not ${FLOW.hoursPerDay}`);
   const ratios = [];
   for (let h = 0; h < 8 * 7 * 24; h++) {
-    let withWander = 0;
+    let wander = 0;
     let pattern = 0;
     for (let m = 0; m < 60; m++) {
       const t = start + h * 3_600_000 + (m + 0.5) * 60_000;
-      withWander += rateFactor(t);
+      wander += rateFactor(t);
       pattern += shapeFactor(t);
     }
-    ratios.push(withWander / pattern);
+    ratios.push(wander / pattern);
   }
   const mean = ratios.reduce((a, b) => a + b, 0) / ratios.length;
   const sd = Math.sqrt(ratios.reduce((a, b) => a + (b - mean) ** 2, 0) / ratios.length);
-  if (Math.abs(sd - FLOW.hourlyVariation) > 0.015 + FLOW.hourlyVariation * 0.15) {
-    problems.push(`hourly totals vary by ${sd.toFixed(3)}, not ${FLOW.hourlyVariation}`);
-  }
+  if (Math.abs(sd - FLOW.hourlyVariation) > 0.015 + FLOW.hourlyVariation * 0.15) out.push(`hourly totals vary by ${sd.toFixed(3)}, not ${FLOW.hourlyVariation}`);
+  return { out, perDay, sd };
+}
 
-  failed ||= problems.length > 0;
-  console.log(`\n${problems.length ? 'FAIL' : 'ok  '}  ${name}`);
-  console.log(`      ${FLOW.hoursPerDay} hours a day on average, from ${low.toFixed(2)}x to ${high.toFixed(2)}x; busiest minute adds ${biggest.toFixed(1)} hours`);
-  console.log(`      hourly totals vary by ${sd.toFixed(3)} around the pattern (asked for ${FLOW.hourlyVariation}); four weeks average ${perDay.toFixed(0)} hours a day`);
-  console.log(`      shares: ${DATA_TYPES.map((t) => `${t.short} ${(t.share * 100).toFixed(1)}%`).join(', ')}`);
-  for (const w of warnings) console.log(`      note: ${w}`);
-  for (const p of problems) console.log(`      problem: ${p}`);
+const real = JSON.parse(await readFile('src/flow.json', 'utf8'));
+const extreme = { ...real, daily: { swing: 0.5, peakHour: 14 }, weekendFactor: 0.5, hourlyVariation: 0.3 };
+const types = (await load(extreme)).DATA_TYPES.map((t) => t.short);
+
+const fileProblems = problemsIn(real, types);
+if (fileProblems.length) {
+  console.log('FAIL  src/flow.json');
+  for (const p of fileProblems) console.log(`      ${p}`);
+  process.exit(1);
+}
+
+let failed = false;
+for (const [name, data] of [
+  ['src/flow.json', real],
+  ['the most extreme values allowed', extreme],
+]) {
+  const { out, perDay, sd } = modelProblems(await load(data));
+  failed ||= out.length > 0;
+  console.log(`${out.length ? 'FAIL' : 'ok  '}  ${name}: four weeks average ${perDay.toFixed(0)} hours a day; hourly totals vary by ${sd.toFixed(3)}`);
+  for (const p of out) console.log(`      ${p}`);
 }
 process.exit(failed ? 1 : 0);

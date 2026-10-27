@@ -26,6 +26,15 @@ const STATIC = { position: false, vertex: false, color: false, rotation: false, 
 /** Room kept for a row label ("1 hour" over "of recording"), and the gap and line beside it */
 const ROW_LABEL_W = 96;
 const ROW_LINE = 24;
+/** Seconds for the debug preview to fill the rest of the year before its finale */
+const PREVIEW_FILL_S = 1.4;
+/** When a year is added, the dataset shifts along one place as a wave from newest to oldest: how long the wave takes to run, and each year's step */
+const SHIFT_WAVE_S = 0.8;
+const SHIFT_STEP_S = 0.35;
+/** Each year swells by this much while it steps, so the wave shows as a gentle ripple running down the dataset */
+const SHIFT_SWELL = 0.2;
+/** A preview holds the added year this long, then the dataset is quietly put back as it really is */
+const PREVIEW_HOLD_S = 0.8;
 
 export interface SceneContext {
   clock: LiveClock;
@@ -35,9 +44,6 @@ export interface SceneContext {
   /** 1 at full quality; lower when frames are slow */
   quality: () => number;
 }
-
-/** Seconds for the debug preview to fill the rest of the year before its finale */
-const PREVIEW_FILL_S = 1.4;
 
 interface Ripple {
   x: number;
@@ -85,6 +91,7 @@ export class YearScene {
   private fillSlot = new Int32Array(N);
   private time = 0;
   private acc = new Float64Array(N);
+  private kNow = new Float64Array(N);
   private pt: PathPoint = { x: 0, y: 0, nx: 0, ny: 0 };
 
   // ---- The year in progress
@@ -100,6 +107,8 @@ export class YearScene {
   private fx: Celebration | null = null;
   /** Whether the running finale is a debug preview, which returns to now when it ends */
   private fxPreview = false;
+  /** Seconds since the finale started */
+  private fxAge = 0;
   /** Debug preview: the rest of this year, filling in quickly before the finale */
   private preview: { t: number; queue: { slot: number; type: number }[]; added: number; temp: ParticleContainer } | null = null;
 
@@ -144,6 +153,17 @@ export class YearScene {
   private fy1 = 1;
   private fieldPitch = 10;
   private fieldCols = 1;
+  /** Top-left of the dataset grid, fixed for the session so adding years never nudges it */
+  private fieldX0 = 0;
+  private fieldY0 = 0;
+  /**
+   * The dataset shifting along one place when a year is added. Each year is
+   * drawn at its place plus an offset that moves from `from` to `to`, starting
+   * with the newest.
+   */
+  private shift = { from: 0, to: 0, t: 0, running: false };
+  /** A preview's stand-in for the year it adds, until it fades back to the real dataset */
+  private standIn: Particle | null = null;
   private fieldCount = 0;
   private fieldParts: Particle[] = [];
   /** The canvas is wider than the picture; these are its edges in picture coordinates */
@@ -282,7 +302,7 @@ export class YearScene {
       const fromY = top + 44;
       // Point at the ring straight below-right of the label
       const px = Math.max(this.cx - rr + 4, fromX + 18);
-      const ang = -Math.acos(Math.max(-1, Math.min(1, (px - this.cx) / rr)));
+      const ang = -Math.acos((px - this.cx) / rr);
       const tx = this.cx + Math.cos(ang) * (rr + 6);
       const ty = this.cy + Math.sin(ang) * (rr + 6);
       g.moveTo(fromX, fromY).lineTo(tx, ty).stroke(line);
@@ -379,34 +399,84 @@ export class YearScene {
       }
     }
     this.fieldPitch = Math.min(best, 22);
+    const gw = this.fieldCols * this.fieldPitch;
+    const gh = Math.ceil(n / this.fieldCols) * this.fieldPitch;
+    this.fieldX0 = this.fx0 + (this.fx1 - this.fx0 - gw) / 2;
+    this.fieldY0 = this.fy0 + (this.fy1 - this.fy0 - gh) / 2;
   }
 
-  /** Newest years first, so the year filling now sits nearest the big disc */
-  private fieldPos(idx: number): { x: number; y: number } {
-    const i = this.fieldCount - idx;
-    const cols = this.fieldCols;
-    const gw = cols * this.fieldPitch;
-    const gh = Math.ceil((this.fieldCount + 1) / cols) * this.fieldPitch;
-    const x0 = this.fx0 + (this.fx1 - this.fx0 - gw) / 2;
-    const y0 = this.fy0 + (this.fy1 - this.fy0 - gh) / 2;
-    return { x: x0 + ((i % cols) + 0.5) * this.fieldPitch, y: y0 + (Math.floor(i / cols) + 0.5) * this.fieldPitch };
+  /**
+   * Place k along the dataset, which runs as one chain in a snake: the first
+   * row left to right, the next right to left, and so on. Place 0, the head, is
+   * the year filling now, nearest the big disc; the newest finished year is 1.
+   * Fractional places sit on the straight line between two, so a year at the
+   * end of a row steps straight down to the next.
+   */
+  private slotPos(k: number): { x: number; y: number } {
+    const at = (j: number) => {
+      const cols = this.fieldCols;
+      const row = Math.floor(j / cols);
+      const c = row % 2 ? cols - 1 - (j % cols) : j % cols;
+      return { x: this.fieldX0 + (c + 0.5) * this.fieldPitch, y: this.fieldY0 + (row + 0.5) * this.fieldPitch };
+    };
+    const j = Math.floor(k);
+    const f = k - j;
+    if (f < 1e-6) return at(j);
+    const a = at(j);
+    const b = at(j + 1);
+    return { x: a.x + (b.x - a.x) * f, y: a.y + (b.y - a.y) * f };
+  }
+
+  /** Draw the dataset part-way through a shift: each year at its place plus its share of the offset */
+  private placeField(): void {
+    const { from, to, t } = this.shift;
+    const base = (this.fieldPitch * 0.38) / TEX_RADIUS;
+    const put = (p: Particle, k: number) => {
+      // How far through its step this place is: the wave starts at the newest year and runs to the oldest
+      const f = clamp((t - (SHIFT_WAVE_S * Math.max(0, k - 1)) / this.fieldCount) / SHIFT_STEP_S, 0, 1);
+      const { x, y } = this.slotPos(k + from + (to - from) * ease(f));
+      p.x = x;
+      p.y = y;
+      p.scaleX = p.scaleY = base * (1 + SHIFT_SWELL * Math.sin(Math.PI * f));
+    };
+    this.fieldParts.forEach((p, i) => put(p, this.fieldCount - i));
+    if (this.standIn) put(this.standIn, 0);
+    this.field.update();
+  }
+
+  /** Start the dataset shifting from one offset to another */
+  private startShift(from: number, to: number): void {
+    this.shift = { from, to, t: 0, running: true };
+    this.placeField();
+  }
+
+  /** Back to the real dataset: drop a preview's stand-in and any offset */
+  private settleShift(): void {
+    if (this.standIn) this.field.removeParticle(this.standIn);
+    this.standIn = null;
+    this.shift = { from: 0, to: 0, t: 0, running: false };
   }
 
   private drawField(): void {
+    this.settleShift();
     this.field.removeParticles();
     this.fieldParts = [];
     const s = (this.fieldPitch * 0.38) / TEX_RADIUS;
     for (let i = 0; i < this.fieldCount; i++) {
-      const { x, y } = this.fieldPos(i);
+      const { x, y } = this.slotPos(this.fieldCount - i);
       const p = new Particle({ texture: this.ctx.tex, x, y, anchorX: 0.5, anchorY: 0.5, scaleX: s, scaleY: s, tint: OFF_WHITE, alpha: 0.9 });
       this.fieldParts.push(p);
       this.field.addParticle(p);
     }
     this.field.update();
 
-    // The year filling now, tied to the big disc by two lines like a magnifier
+    this.drawLens();
+  }
+
+  /** The year filling now, tied to the big disc by two lines like a magnifier */
+  private drawLens(): void {
     const g = this.fieldG.clear();
-    const { x, y } = this.fieldPos(this.fieldCount);
+    const { x, y } = this.slotPos(0);
     const r = Math.max(3, this.fieldPitch * 0.42);
     const rr = this.R + 10;
     const d = Math.hypot(x - this.cx, y - this.cy);
@@ -500,21 +570,23 @@ export class YearScene {
     this.onYearComplete(this.fieldCount);
     if (!dots.length) return;
 
-    // The finished year waits off the field until the show lands it there
+    // Until it lands, the dataset stays as it was, with the head waiting for the finished year
     const newest = this.fieldParts[this.fieldCount - 1];
     if (newest) newest.alpha = 0;
-    this.field.update();
-    const target = this.fieldPos(this.fieldCount - 1);
+    this.shift.from = this.shift.to = -1;
+    this.placeField();
+    const target = this.slotPos(0);
     this.startFx(dots, target, this.fieldCount, false, () => {
+      // It lands on the head, then every year shifts along one place to make room for the next
       if (newest) newest.alpha = 0.9;
-      this.field.update();
       this.ripples.push({ x: target.x, y: target.y, age: 0 });
+      this.startShift(-1, 0);
     });
   }
 
   private startFx(dots: FxDot[], target: { x: number; y: number }, years: number, preview: boolean, onLand: () => void): void {
-    this.slots.alpha = 0;
     this.disc.alpha = 0;
+    this.fxAge = 0;
     const fx = new Celebration(
       this.celebration,
       {
@@ -541,7 +613,6 @@ export class YearScene {
     this.fxLayer.addChild(fx.root);
     this.fx = fx;
     this.fxPreview = preview;
-    this.guideG.visible = this.fieldG.visible = !fx.hidesGuides;
   }
 
   /**
@@ -580,8 +651,24 @@ export class YearScene {
     const dots = this.yearDots();
     for (const q of pv.queue) dots.push({ x: this.kx[q.slot], y: this.ky[q.slot], tint: DATA_TYPES[q.type].color, alpha: DATA_TYPES[q.type].alpha, type: q.type });
     this.endPreview();
-    const target = this.fieldPos(this.fieldCount);
-    this.startFx(dots, target, this.fieldCount + 1, true, () => this.ripples.push({ x: target.x, y: target.y, age: 0 }));
+    const target = this.slotPos(0);
+    this.startFx(dots, target, this.fieldCount + 1, true, () => {
+      this.ripples.push({ x: target.x, y: target.y, age: 0 });
+      const s = (this.fieldPitch * 0.38) / TEX_RADIUS;
+      this.standIn = new Particle({ texture: this.ctx.tex, x: target.x, y: target.y, anchorX: 0.5, anchorY: 0.5, scaleX: s, scaleY: s, tint: OFF_WHITE, alpha: 0.9 });
+      this.field.addParticle(this.standIn);
+      this.startShift(0, 1);
+      // Once the added year has been seen, put the real dataset back. The years are identical
+      // circles, so stepping them all back one place shows only at the head and the tail.
+      this.ctx.tweens.add(0.01, (v) => v, () => {}, {
+        delay: SHIFT_WAVE_S + SHIFT_STEP_S + PREVIEW_HOLD_S,
+        owner: this,
+        onDone: () => {
+          this.settleShift();
+          this.placeField();
+        },
+      });
+    });
   }
 
   private endPreview(): void {
@@ -606,20 +693,13 @@ export class YearScene {
     this.fx.destroy();
     this.fx = null;
     this.fxPreview = false;
-    this.guideG.visible = this.fieldG.visible = true;
     this.slots.alpha = 1;
     this.disc.alpha = 1;
   }
 
   // ------------------------------------------------------------------ entrance
 
-  enter(animate: boolean): void {
-    if (!animate) {
-      this.reveal = 1;
-      this.introT = 1;
-      this.drawStreams();
-      return;
-    }
+  enter(): void {
     const tw = this.ctx.tweens;
     this.sourcesLayer.children.forEach((s, i) => {
       s.scale.set(0);
@@ -683,19 +763,21 @@ export class YearScene {
       this.completeYear(T, next);
       return;
     }
-    const fresh: number[] = [];
-    DATA_TYPES.forEach((type, t) => {
-      const kNow = Math.floor(type.share * T);
-      for (; this.lastK[t] < kNow; this.lastK[t]++) fresh.push(t);
-    });
-    const fly = fresh.length <= MAX_FLIGHTS_PER_FRAME;
-    for (const t of fresh) {
-      const slot = this.nextSlot(t);
-      if (!fly) this.addDiscDot(slot, t);
-      else if (this.fillAt[t] < 0) {
-        this.fillAt[t] = this.time;
-        this.fillSlot[t] = slot;
-      } else this.launchHour(t, slot);
+    let fresh = 0;
+    for (let t = 0; t < N; t++) {
+      this.kNow[t] = Math.floor(DATA_TYPES[t].share * T);
+      fresh += this.kNow[t] - this.lastK[t];
+    }
+    const fly = fresh <= MAX_FLIGHTS_PER_FRAME;
+    for (let t = 0; t < N; t++) {
+      for (; this.lastK[t] < this.kNow[t]; this.lastK[t]++) {
+        const slot = this.nextSlot(t);
+        if (!fly) this.addDiscDot(slot, t);
+        else if (this.fillAt[t] < 0) {
+          this.fillAt[t] = this.time;
+          this.fillSlot[t] = slot;
+        } else this.launchHour(t, slot);
+      }
     }
   }
 
@@ -704,6 +786,11 @@ export class YearScene {
     const T = this.ctx.clock.total();
     this.sync();
     this.stepPreview(dt);
+    if (this.shift.running) {
+      this.shift.t += dt;
+      this.placeField();
+      this.shift.running = this.shift.t < SHIFT_WAVE_S + SHIFT_STEP_S;
+    }
 
     // Hour rings: how much of the current hour of each type has arrived, on a solid base
     const g = this.hoppersG.clear();
@@ -750,11 +837,29 @@ export class YearScene {
     // A ring round the disc, with a white arc for how much of this year of recording is done
     const gg = this.guideG.clear();
     const rr = this.R + 10;
-    gg.circle(this.cx, this.cy, rr).stroke({ width: 3, color: TRACK_SOLID });
+    const look = this.fx?.ring();
+    if (look) {
+      // During a finale: white while the year is whole, fading to the empty outline as it lands,
+      // with any opening between the magnifier arms resealing as it fades
+      // Drawn exactly as the arc is outside a finale (from 12 o'clock), so nothing shifts at the handover
+      const path = () => {
+        const { a0, a1, ccw } = look.gap ?? { a0: -Math.PI / 2, a1: Math.PI * 1.5, ccw: false };
+        return gg.moveTo(this.cx + Math.cos(a0) * rr, this.cy + Math.sin(a0) * rr).arc(this.cx, this.cy, rr, a0, a1, ccw);
+      };
+      path().stroke({ width: 3, color: TRACK_SOLID, cap: 'round' });
+      if (look.white > 0.002) path().stroke({ width: 3, color: OFF_WHITE, alpha: 0.9 * look.white, cap: 'round' });
+      // The empty hours fade out as the finale starts (they show through the see-through hours, so
+      // switching them off would flicker), and back in, with a new year's first hours, as the ring fades.
+      // A preview's disc stays hidden: it sweeps back in once the finale ends.
+      this.fxAge += dt;
+      this.slots.alpha = Math.max(1 - this.fxAge / 0.35, 1 - look.white);
+      if (!this.fxPreview) this.disc.alpha = 1 - look.white;
+    } else {
+      gg.circle(this.cx, this.cy, rr).stroke({ width: 3, color: TRACK_SOLID });
+    }
     let arc = clamp((T - this.yearIndex * YEAR_HOURS) / YEAR_HOURS, 0, 1) * shown;
     if (this.preview) arc += (1 - arc) * ease(Math.min(1, this.preview.t / PREVIEW_FILL_S));
-    if (this.fx && this.fxPreview) arc = 1;
-    if (arc > 0.002) {
+    if (!look && arc > 0.002) {
       gg.moveTo(this.cx, this.cy - rr)
         .arc(this.cx, this.cy, rr, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * arc)
         .stroke({ width: 3, color: OFF_WHITE, alpha: 0.9, cap: 'round' });
@@ -772,7 +877,6 @@ export class YearScene {
       }
     }
 
-    // Move drops down their tracks, and finished hours into the disc
     // Minute drops down their tracks
     const v = 130 * this.scale;
     const { pool, pt } = this;
@@ -828,18 +932,11 @@ export class YearScene {
       rg.circle(rp.x, rp.y, this.dotR + 2 + 10 * this.scale * ease(s)).stroke({ width: 1.5, color: OFF_WHITE, alpha: 0.8 * easeExit(1 - s) });
     }
 
-    // The year-complete show, then the new year fades in
+    // The year-complete show. After a preview, the disc sweeps back to its real fill.
     if (this.fx && !this.fx.update(dt)) {
       const wasPreview = this.fxPreview;
       this.endFx();
-      if (wasPreview) {
-        this.fillIntro(0.15);
-      } else {
-        for (const layer of [this.slots, this.disc]) {
-          layer.alpha = 0;
-          this.ctx.tweens.add(0.6, ease, (a) => (layer.alpha = a), { owner: this });
-        }
-      }
+      if (wasPreview) this.fillIntro(0.15);
     }
 
     if (this.dirty) {
@@ -849,11 +946,6 @@ export class YearScene {
   }
 
   // ------------------------------------------------------------------ text
-
-  get yearProgress(): number {
-    const T = this.ctx.clock.total();
-    return (T % YEAR_HOURS) / YEAR_HOURS;
-  }
 
   labels(): StageLabel[] {
     const spacing = this.srcX[1] - this.srcX[0];
@@ -877,10 +969,5 @@ export class YearScene {
       tier: true,
     });
     return out;
-  }
-
-  destroy(): void {
-    this.ctx.tweens.cancel(this);
-    this.root.destroy({ children: true });
   }
 }

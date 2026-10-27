@@ -8,7 +8,6 @@ export class Quality {
   private ema = 16.7;
   private slowMs = 0;
   private fastMs = 0;
-  onChange: () => void = () => {};
 
   get factor(): number {
     return this.levels[this.level];
@@ -23,7 +22,6 @@ export class Quality {
       if (this.slowMs > 1500 && this.level < this.levels.length - 1) {
         this.level++;
         this.slowMs = 0;
-        this.onChange();
       }
     } else if (this.ema < 20) {
       this.fastMs += m;
@@ -31,7 +29,6 @@ export class Quality {
       if (this.fastMs > 8000 && this.level > 0) {
         this.level--;
         this.fastMs = 0;
-        this.onChange();
       }
     } else {
       this.slowMs = 0;

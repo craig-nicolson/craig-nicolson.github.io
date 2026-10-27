@@ -108,19 +108,6 @@
       </div>
     </footer>
 
-    <script>
-      // Safeguard: if the page's code never starts, say so rather than leaving a blank picture.
-      // The usual cause is publishing this source file instead of the built site (see Deploy in the README).
-      window.addEventListener('load', function () {
-        if (window.__waveformStarted) return;
-        var note = document.querySelector('.stage-fallback');
-        if (note) {
-          note.textContent = 'The animation could not load. Please try again later.';
-          note.hidden = false;
-        }
-        console.error('The page script did not start. If this site is on GitHub Pages, set Settings > Pages > Source to "GitHub Actions" so the built site in dist/ is published, not the source files.');
-      });
-    </script>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -1,4 +1,4 @@
-import { Container, Graphics, Particle, ParticleContainer, RenderTexture, Sprite, type Renderer, type Texture } from 'pixi.js';
+import { Container, Graphics, Matrix, Particle, ParticleContainer, RenderTexture, Sprite, type Renderer, type Texture } from 'pixi.js';
 import { DATA_TYPES, OFF_WHITE, type CelebrationId } from '../config';
 import { ease } from '../ease';
 import * as fmt from '../format';
@@ -36,7 +36,7 @@ export interface FxDot {
 /** Seconds. The portal ends when its pulse has passed, so its figure is only a limit. */
 const DURATION: Record<CelebrationId, number> = { orbit: 4.6, portal: 8, pour: 12, spin: 5.3, collider: 5.2, number: 5.4 };
 /** When the finished year appears in the dataset */
-const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, pour: 1, spin: 1, collider: 1, number: 0.97 };
+const LANDS: Record<CelebrationId, number> = { orbit: 1, portal: 1, pour: 1, spin: 1, collider: 1, number: 1 };
 /** Collider: when the bunches are kicked off the ring and meet, then how long the debris bursts out and falls back (seconds) */
 const KICK_AT = 2.6;
 const COLLIDE_AT = 2.85;
@@ -44,13 +44,17 @@ const BURST_S = 0.75;
 const REGROUP_S = 0.6;
 /** How fast the long-exposure trails fade; higher means shorter trails */
 const TRAIL_FADE = 7;
-/** Pour: when the ring starts opening and how long it takes, and when to stop waiting for stragglers (seconds) */
-const POUR_OPEN_AT = 0.9;
-const POUR_OPEN_S = 0.8;
-const POUR_GIVE_UP = 9;
-/** How bouncy the hours are against each other, and against the ring and arms (0 is dead, 1 is perfect) */
-const GRAIN_BOUNCE = 0.15;
-const WALL_BOUNCE = 0.55;
+/** Pour: the ring opens as in Portal, then a pulse switches gravity on (seconds); stragglers are given up on after POUR_GIVE_UP */
+const GRAVITY_AT = 1.1;
+const GRAVITY_PULSE_S = 0.45;
+const POUR_GIVE_UP = 10;
+/** Each hour becomes a ball this many times the radius of its dot */
+const BALL_SIZE = 1.55;
+/** How bouncy the balls are against each other, and against the ring and arms (0 is dead, 1 is perfect) */
+const BALL_BOUNCE = 0.85;
+const WALL_BOUNCE = 0.8;
+/** Collision passes a frame: more keeps piles from squeezing balls together, at a cost per pass */
+const BALL_PASSES = 2;
 /** Spin out: top spin in radians a second, and the moment the heap starts pouring away */
 const SPIN_MAX = 10;
 const POUR_AT = 3.6;
@@ -58,6 +62,12 @@ const POUR_AT = 3.6;
 const OPEN_S = 0.9;
 const DRAIN_S = 1.5;
 const PULSE_S = 1.4;
+
+/** Year count: when the number stops holding and gathers into the year's disc (as a share of the show) */
+const NUMBER_GO = 0.62;
+
+/** Every finale: the year's ring stays white while the year is whole, then fades to the empty outline over this many seconds as it lands */
+const RING_FADE_S = 0.6;
 
 const seg = (u: number, a: number, b: number) => (u <= a ? 0 : u >= b ? 1 : (u - a) / (b - a));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -84,8 +94,6 @@ export class Celebration {
   private dur: number;
   private landed = false;
   private base: number;
-  private minX = 0;
-  private spanX = 1;
   private numScale = 1;
   // Spin out: shared spin angle, each dot's state, and the height of the heap per column
   private spinAngle = 0;
@@ -101,15 +109,17 @@ export class Celebration {
   private absorbed = 0;
   private gone = new Uint8Array(0);
   private pulseAt = 0;
-  // Collider: long-exposure trails. Two textures take turns: each frame copies the last one
-  // a little fainter, then draws the particles on top, so trails fade to clear
+  // Collider: long-exposure trails, under the hours themselves. Two textures take turns: each
+  // frame copies the last one a little fainter, then adds where the hours were last frame.
   private trails: [RenderTexture, RenderTexture] | null = null;
-  private trailHolder = new Container();
+  private trailShift = new Matrix();
   private copy = new Sprite();
   private copyHolder = new Container();
   private trailView = new Sprite();
-  /** Things this show draws itself, so the scene hides its own versions */
-  readonly hidesGuides: boolean;
+  /** How far the ring has opened between the magnifier arms (Portal and Pour), 0 to 1 */
+  private opening = 0;
+  /** Portal and Pour end on the pulse, so their landing and ending follow it rather than a fixed time */
+  private readonly pulses: boolean;
   onLand: () => void = () => {};
 
   constructor(
@@ -121,6 +131,7 @@ export class Celebration {
   ) {
     const n = (this.n = dots.length);
     this.dur = DURATION[id];
+    this.pulses = id === 'portal' || id === 'pour';
     this.base = s.dotR / TEX_RADIUS;
     this.pc = new ParticleContainer({
       dynamicProperties: { position: true, vertex: true, color: true, rotation: false, uvs: false },
@@ -140,20 +151,17 @@ export class Celebration {
       this.pc.addParticle(p);
     });
     if (id === 'collider') {
-      // Particles draw into a texture as wide as the canvas, which keeps their trails
+      // Trails live in a texture as wide as the canvas, drawn under the hours
       const w = Math.ceil(s.x1 - s.x0);
       const h = Math.ceil(s.h);
       const make = () => RenderTexture.create({ width: w, height: h, resolution: renderer.resolution });
       this.trails = [make(), make()];
-      this.trailHolder.x = -s.x0;
-      this.trailHolder.addChild(this.pc);
+      this.trailShift.translate(-s.x0, 0);
       this.copyHolder.addChild(this.copy);
       this.trailView.x = s.x0;
-      this.root.addChild(this.trailView, this.g);
-    } else {
-      this.root.addChild(this.pc, this.g);
+      this.root.addChild(this.trailView);
     }
-    this.hidesGuides = id === 'portal' || id === 'pour';
+    this.root.addChild(this.pc, this.g);
     this.setup();
   }
 
@@ -162,8 +170,8 @@ export class Celebration {
     const { s } = this;
     const dx = s.tx - s.cx;
     const dy = s.ty - s.cy;
-    const L = Math.hypot(dx, dy) || 1;
-    const half = Math.acos(Math.max(-1, Math.min(1, (s.ring - s.slotR) / L)));
+    const L = Math.hypot(dx, dy);
+    const half = Math.acos((s.ring - s.slotR) / L);
     const phi = Math.atan2(dy, dx);
     this.axis = {
       dx: dx / L,
@@ -202,14 +210,16 @@ export class Celebration {
       this.heap = new Float32Array(Math.ceil((s.x1 - s.x0) / this.col) + 1);
     } else if (this.id === 'pour') {
       this.funnel();
-      const [px, py] = (this.p = this.params(4));
+      const [px, py, , , wakes] = (this.p = this.params(5));
       px.set(this.x0);
       py.set(this.y0);
+      // The gravity pulse spreads out from the centre, waking each hour as it passes
+      for (let i = 0; i < n; i++) wakes[i] = GRAVITY_AT + (GRAVITY_PULSE_S * Math.hypot(this.x0[i] - s.cx, this.y0[i] - s.cy)) / s.ring;
       this.gone = new Uint8Array(n);
-      // 1 once an hour has left the ring through the opening
+      // 1 once an hour is awake, 2 once it has left the ring through the door
       this.state = new Uint8Array(n);
-      // The area the hours can reach, split into cells about one hour across
-      const size = Math.max(2, s.dotR * 2);
+      // The area the balls can reach, split into cells one ball across
+      const size = Math.max(2, s.dotR * BALL_SIZE * 2);
       const x0 = Math.min(s.cx - s.ring, s.tx - s.slotR) - 8;
       const y0 = s.cy - s.ring - 8;
       const w = Math.ceil((Math.max(s.cx + s.ring, s.tx + s.slotR) + 8 - x0) / size);
@@ -224,7 +234,7 @@ export class Celebration {
         const py0 = s.cy + Math.sin(a) * s.ring;
         const ex = s.tx + Math.cos(a) * s.slotR - px0;
         const ey = s.ty + Math.sin(a) * s.slotR - py0;
-        const len = Math.hypot(ex, ey) || 1;
+        const len = Math.hypot(ex, ey);
         let nx = -ey / len;
         let ny = ex / len;
         if ((mx - px0) * nx + (my - py0) * ny < 0) {
@@ -265,7 +275,7 @@ export class Celebration {
       const seen = new Int32Array(DATA_TYPES.length);
       for (let i = 0; i < n; i++) {
         const t = this.type[i];
-        phi0[i] = (Math.PI * 2 * seen[t]++) / Math.max(1, total[t]) + t * 0.4;
+        phi0[i] = (Math.PI * 2 * seen[t]++) / total[t] + t * 0.4;
       }
     } else {
       const [nx, ny, delay, ph] = (this.p = this.params(4));
@@ -274,19 +284,13 @@ export class Celebration {
         const j = Math.floor(Math.random() * (i + 1));
         [pts[i], pts[j]] = [pts[j], pts[i]];
       }
-      let lo = Infinity;
-      let hi = -Infinity;
       for (let i = 0; i < n; i++) {
         const q = pts[i % pts.length];
         nx[i] = q.x + rnd(-0.6, 0.6);
         ny[i] = q.y + rnd(-0.6, 0.6);
         delay[i] = rnd(0, 0.12);
         ph[i] = rnd(0, Math.PI * 2);
-        lo = Math.min(lo, nx[i]);
-        hi = Math.max(hi, nx[i]);
       }
-      this.minX = lo;
-      this.spanX = Math.max(1, hi - lo);
     }
   }
 
@@ -295,11 +299,10 @@ export class Celebration {
     const { s } = this;
     const text = fmt.int(s.years);
     const cv = document.createElement('canvas');
-    const g = cv.getContext('2d', { willReadFrequently: true });
-    if (!g) return [{ x: s.cx, y: s.cy }];
+    const g = cv.getContext('2d', { willReadFrequently: true })!;
     const family = getComputedStyle(document.body).fontFamily;
     g.font = `700 100px ${family}`;
-    const w100 = g.measureText(text).width || 1;
+    const w100 = g.measureText(text).width;
     const size = Math.min((100 * s.w * 0.86) / w100, (s.R * 1.2) / 0.75);
     const W = Math.ceil((w100 * size) / 100) + 8;
     const H = Math.ceil(size * 0.9) + 8;
@@ -317,7 +320,7 @@ export class Celebration {
     for (let y = 0; y < H; y += step) {
       for (let x = 0; x < W; x += step) if (data[(y * W + x) * 4 + 3] > 128) pts.push({ x: s.cx - W / 2 + x, y: s.cy - H / 2 + y });
     }
-    return pts.length ? pts : [{ x: s.cx, y: s.cy }];
+    return pts;
   }
 
   /** Returns false once the show is over */
@@ -331,14 +334,29 @@ export class Celebration {
     else if (this.id === 'collider') this.collider(Math.min(dt, 1 / 30));
     else if (this.id === 'orbit') this.orbit(u);
     else this.number(u);
-    const pulses = this.id === 'portal' || this.id === 'pour';
-    const lands = pulses ? this.pulseAt > 0 && this.time >= this.pulseAt + 0.35 : u >= LANDS[this.id];
+    const lands = this.pulses ? this.pulseAt > 0 && this.time >= this.pulseAt + 0.35 : u >= LANDS[this.id];
     if (!this.landed && lands) {
       this.landed = true;
       this.onLand();
     }
-    if (pulses && this.pulseAt > 0) return this.time < this.pulseAt + PULSE_S;
+    if (this.pulses && this.pulseAt > 0) return this.time < this.pulseAt + PULSE_S;
     return u < 1;
+  }
+
+  /**
+   * How the scene should draw the year's ring this frame, the same way for every
+   * finale: white while the year is whole, fading to the empty outline as the
+   * year lands. Portal and Pour also open it between the magnifier arms; the
+   * opening reseals as the white fades.
+   */
+  ring(): { white: number; gap: { a0: number; a1: number; ccw: boolean } | null } {
+    const t = this.time;
+    const fadeFrom = this.pulses ? this.pulseAt || Infinity : LANDS[this.id] * this.dur - RING_FADE_S;
+    const fade = ease(seg(t, fadeFrom, fadeFrom + RING_FADE_S));
+    const open = this.opening * (1 - fade);
+    if (open < 0.001) return { white: 1 - fade, gap: null };
+    const { start, dir, span } = this.gapArc();
+    return { white: 1 - fade, gap: { a0: start + dir * span * open, a1: start + dir * Math.PI * 2, ccw: dir < 0 } };
   }
 
   private set(i: number, x: number, y: number, scale: number, alpha: number): void {
@@ -461,10 +479,25 @@ export class Celebration {
   private collider(dt: number): void {
     const { s, time: t } = this;
     const [ang, rad, delay, kx, ky, px, py, vx, vy] = this.p;
+    const regrouped = COLLIDE_AT + BURST_S + REGROUP_S;
+
+    // Long exposure: copy the trails a little fainter, then add where the hours were last frame.
+    // The hours themselves are drawn directly on top, exactly as the year's hours were.
+    if (this.trails && t > dt) {
+      const [front, back] = this.trails;
+      this.copy.texture = front;
+      this.copy.alpha = Math.exp(-TRAIL_FADE * lerp(1, 3, seg(t, regrouped, regrouped + 0.6)) * dt);
+      this.renderer.render({ container: this.copyHolder, target: back, clear: true });
+      this.renderer.render({ container: this.pc, target: back, clear: false, transform: this.trailShift });
+      this.trails = [back, front];
+      this.trailView.texture = back;
+      // Trails fade in, so the first one doesn't thicken every hour at once
+      this.trailView.alpha = seg(t, 0, 0.5);
+    }
+
     const omega = 1.5 + 16 * seg(t, 0.3, KICK_AT) ** 2;
     this.spinAngle += omega * dt;
     const stretch = 1 + 0.8 * seg(t, 0.5, KICK_AT);
-    const regrouped = COLLIDE_AT + BURST_S + REGROUP_S;
     for (let i = 0; i < this.n; i++) {
       if (this.state[i] === 0) {
         // Join a bunch and go round the ring
@@ -515,30 +548,21 @@ export class Celebration {
 
     // The debris becomes the year's disc, which drops into its place in the dataset
     this.core(t / this.dur, (regrouped - 0.2) / this.dur, (regrouped + 0.15) / this.dur, (regrouped + 0.3) / this.dur);
-
-    // Long exposure: copy last frame's trails a little fainter, draw this frame on top, then swap
-    if (this.trails) {
-      const [front, back] = this.trails;
-      this.copy.texture = front;
-      this.copy.alpha = Math.exp(-TRAIL_FADE * lerp(1, 3, seg(t, regrouped, regrouped + 0.6)) * dt);
-      this.renderer.render({ container: this.copyHolder, target: back, clear: true });
-      this.renderer.render({ container: this.trailHolder, target: back, clear: false });
-      this.trails = [back, front];
-      this.trailView.texture = back;
-    }
   }
 
   /**
    * The ring opens where the magnifier lines meet it, from the top down. The
    * hours fall along the funnel under gravity, keeping their spacing like sand
-   * in an hourglass, and squeeze through the triangle into the year's slot.
-   * The slot swells as it takes them in, then lets out one big pulse.
+   * in an hourglass: straight down through the circle, then narrowing with the
+   * arms through the whole mouth of the funnel into the year's slot. The slot
+   * swells as it takes them in, then lets out one big pulse.
    */
   private portal(): void {
     const { s, time: t, axis: ax } = this;
     const [a0, b0, delay] = this.p;
     const gravity = s.h * 1.2;
-    const sc = (a: number) => 1 - (1 - s.slotR / s.R) * ease(Math.max(0, Math.min(1, a / ax.L)));
+    // Across the funnel, each hour keeps its place relative to the arms: full width down to the mouth, then tapering with them
+    const sc = (a: number) => (a <= ax.at ? 1 : lerp(1, ax.ws / ax.wt, (a - ax.at) / (ax.L - ax.at)));
     for (let i = 0; i < this.n; i++) {
       if (this.gone[i]) continue;
       const tau = t - delay[i];
@@ -555,14 +579,15 @@ export class Celebration {
       }
       let b = (b0[i] * sc(a)) / sc(a0[i]);
       if (a > ax.at) {
-        // Inside the triangle: squeeze anything outside it onto its walls
-        const hw = lerp(ax.wt, ax.ws, (a - ax.at) / (ax.L - ax.at)) * 0.92;
+        // Inside the funnel: anything wider than it runs along its walls
+        const hw = ax.wt * sc(a) * 0.94;
         b = Math.max(-hw, Math.min(hw, b));
       }
       this.set(i, s.cx + ax.dx * a + ax.nx * b, s.cy + ax.dy * a + ax.ny * b, lerp(1, 0.6, seg(a, ax.L * 0.7, ax.L)), 1);
     }
 
-    this.portalScene(ease(seg(t, 0.1, OPEN_S)), seg(t, 0.2, OPEN_S), 6, OPEN_S * 0.6);
+    this.opening = ease(seg(t, 0.1, OPEN_S));
+    this.portalScene(seg(t, 0.2, OPEN_S), 6, OPEN_S * 0.6);
   }
 
   /** The part of the ring between the magnifier arms: where it starts opening (the higher end), which way, and how wide */
@@ -573,32 +598,28 @@ export class Celebration {
   }
 
   /**
-   * Shared by Portal and Pour: the ring with its opening, the magnifier arms
-   * (brighter while the hours run down them), and the portal, which swells as
-   * it absorbs and then lets out the pulse.
+   * Shared by Portal and Pour: the magnifier arms (brighter while the hours run
+   * down them), and the portal, which swells as it absorbs and then lets out
+   * the pulse. The ring and its opening are drawn by the scene (see ring()).
    */
-  private portalScene(open: number, wallUp: number, giveUpAt: number, swirlAfter: number): void {
+  private portalScene(wallUp: number, giveUpAt: number, swirlAfter: number): void {
     const { s, time: t, axis: ax } = this;
     const g = this.g;
-    const { start, dir, span } = this.gapArc();
-    const from = start + dir * span * open;
-    g.moveTo(s.cx + Math.cos(from) * s.ring, s.cy + Math.sin(from) * s.ring)
-      .arc(s.cx, s.cy, s.ring, from, start + dir * Math.PI * 2, dir < 0)
-      .stroke({ width: 4, color: OFF_WHITE, alpha: 0.9 * (1 - seg(t, this.pulseAt || 99, (this.pulseAt || 99) + 0.4)), cap: 'round' });
 
-    const wall = 0.15 + 0.35 * wallUp * (1 - seg(t, this.pulseAt || 99, (this.pulseAt || 99) + 0.6));
+    // Everything here fades in, so nothing pops at the handover
+    const wall = 0.5 * wallUp * (this.pulseAt ? 1 - seg(t, this.pulseAt, this.pulseAt + 0.6) : 1);
     for (const ang of [ax.a1, ax.a2]) {
       g.moveTo(s.cx + Math.cos(ang) * s.ring, s.cy + Math.sin(ang) * s.ring)
         .lineTo(s.tx + Math.cos(ang) * s.slotR, s.ty + Math.sin(ang) * s.slotR)
         .stroke({ width: 2, color: OFF_WHITE, alpha: wall, cap: 'round' });
     }
 
-    const filled = this.absorbed / Math.max(1, this.n);
+    const filled = this.absorbed / this.n;
     if (!this.pulseAt && (filled > 0.995 || t > giveUpAt)) this.pulseAt = t;
     const pt = this.pulseAt ? t - this.pulseAt : -1;
     let rp = s.slotR * (1 + 2.2 * Math.sqrt(filled));
     if (pt >= 0) rp = lerp(s.slotR * 3.6, s.tr, ease(seg(pt, 0.05, 0.6)));
-    g.circle(s.tx, s.ty, rp).fill({ color: OFF_WHITE, alpha: 0.95 });
+    g.circle(s.tx, s.ty, rp).fill({ color: OFF_WHITE, alpha: 0.95 * seg(t, 0, 0.3) });
     if (pt < 0 && t > swirlAfter) {
       for (let k = 0; k < 3; k++) {
         const a = t * 5 + (k * Math.PI * 2) / 3;
@@ -622,47 +643,74 @@ export class Celebration {
   }
 
   /**
-   * Gravity switches on. The year's hours fall and bounce inside the ring and
-   * pile up like sand, pushing against each other. The ring opens between the
-   * magnifier arms and they pour out, tumbling down between the arms into the
-   * year's slot, which swells as it takes them in and then lets out the pulse.
+   * The ring opens between the magnifier arms, as in Portal. A pulse ripples
+   * out from the centre and switches gravity on: each hour becomes a bouncy
+   * ball as it passes, falls, and ricochets round the ring, out through the
+   * opening and down the chute between the arms into the year's slot, which
+   * swells as it takes them in and then lets out the pulse.
    */
   private pour(dt: number): void {
     const { s, time: t } = this;
-    const [px, py, vx, vy] = this.p;
-    const r = s.dotR;
-    const gravity = s.h * 1.8;
-    const air = Math.exp(-0.15 * dt);
+    const [px, py, vx, vy, wakes] = this.p;
+    const r = s.dotR * BALL_SIZE;
+    const grow = r / s.dotR;
+    const gravity = s.h * 1.6;
+    const air = Math.exp(-0.05 * dt);
+    // The pulse throws each ball off in a random direction, so the year bursts into a cloud of bouncing balls
+    const kick = s.R * 2.2;
     const n = this.n;
 
-    // 1. Fall
+    // The ring opens from the higher end of the gap down, exactly as in Portal
+    const { start, dir, span } = this.gapArc();
+    this.opening = ease(seg(t, 0.1, OPEN_S));
+    const opened = span * this.opening;
+
+    // 1. Wake as the pulse passes, then fall
     for (let i = 0; i < n; i++) {
       if (this.gone[i]) continue;
+      if (!this.state[i]) {
+        if (t < wakes[i]) continue;
+        // Woken with energy: a random throw, leaning outwards from the centre
+        this.state[i] = 1;
+        const ox = this.x0[i] - s.cx;
+        const oy = this.y0[i] - s.cy;
+        const d = Math.hypot(ox, oy);
+        const phi = rnd(0, Math.PI * 2);
+        const speed = kick * Math.sqrt(Math.random());
+        vx[i] = Math.cos(phi) * speed + (ox / d) * kick * 0.15;
+        vy[i] = Math.sin(phi) * speed + (oy / d) * kick * 0.15;
+      }
       vy[i] = (vy[i] + gravity * dt) * air;
       vx[i] *= air;
       px[i] += vx[i] * dt;
       py[i] += vy[i] * dt;
     }
 
-    // 2. Hours push each other apart, on a grid so each only checks its neighbours
-    this.collideGrains(px, py, vx, vy, 2 * r);
+    // 2. Balls bounce off each other, on a grid so each only checks its neighbours. Two passes,
+    //    so a pile keeps every ball its full size instead of squeezing them together
+    for (let pass = 0; pass < BALL_PASSES; pass++) this.collideGrains(px, py, vx, vy, 2 * r);
 
-    // 3. The ring (except where it has opened), the arms, and the portal
-    const { start, dir, span } = this.gapArc();
-    const opened = span * ease(seg(t, POUR_OPEN_AT, POUR_OPEN_AT + POUR_OPEN_S));
+    // 3. The ring and door, the arms, and the portal's mouth
     const inside = s.ring - 2 - r;
+    const filled = this.absorbed / n;
+    const mouth = Math.max(s.slotR * (1 + 2.2 * Math.sqrt(filled)), s.R * 0.05) + r;
+    const ax = this.axis;
     const away = this.pulseAt ? 1 - seg(t, this.pulseAt, this.pulseAt + 0.3) : 1;
     for (let i = 0; i < n; i++) {
       if (this.gone[i]) continue;
+      if (!this.state[i]) {
+        if (t < 0.05) this.set(i, px[i], py[i], 1, 1);
+        continue;
+      }
       const ox = px[i] - s.cx;
       const oy = py[i] - s.cy;
-      const d = Math.hypot(ox, oy) || 1;
-      // Until an hour has left through the opening, the ring holds it, however hard the pile pushes
-      if (!this.state[i] && d > inside) {
+      const d = Math.hypot(ox, oy);
+      if (this.state[i] === 1 && d > inside) {
         let rel = ((Math.atan2(oy, ox) - start) * dir) % (Math.PI * 2);
         if (rel < 0) rel += Math.PI * 2;
         if (rel <= opened) {
-          if (d > s.ring) this.state[i] = 1;
+          // Through the opening and into the chute
+          if (d > s.ring) this.state[i] = 2;
         } else {
           const nx = ox / d;
           const ny = oy / d;
@@ -675,7 +723,17 @@ export class Celebration {
           }
         }
       }
-      if (this.state[i]) {
+      if (this.state[i] === 2) {
+        // Over the last stretch of the chute the portal pulls balls in, so they don't jam at its tip
+        const along = ((px[i] - s.cx) * ax.dx + (py[i] - s.cy) * ax.dy) / ax.L;
+        const pull = gravity * 1.5 * seg(along, 0.72, 0.95);
+        if (pull > 0) {
+          const dx = s.tx - px[i];
+          const dy = s.ty - py[i];
+          const dd = Math.hypot(dx, dy);
+          vx[i] += (dx / dd) * pull * dt;
+          vy[i] += (dy / dd) * pull * dt;
+        }
         for (const arm of this.arms) {
           const along = ((px[i] - arm.px) * arm.ex + (py[i] - arm.py) * arm.ey) / arm.len2;
           if (along < -0.05 || along > 1.05) continue;
@@ -690,7 +748,7 @@ export class Celebration {
           }
         }
       }
-      const intoPortal = Math.hypot(px[i] - s.tx, py[i] - s.ty) < s.slotR + r;
+      const intoPortal = Math.hypot(px[i] - s.tx, py[i] - s.ty) < mouth;
       const lost = py[i] > s.h + 30 || px[i] < s.x0 - 30 || px[i] > s.x1 + 30;
       if (intoPortal || lost) {
         this.gone[i] = 1;
@@ -698,19 +756,28 @@ export class Celebration {
         this.set(i, s.tx, s.ty, 0, 0);
         continue;
       }
-      this.set(i, px[i], py[i], 1, away);
+      // Each hour swells from its dot to a full ball as it wakes
+      this.set(i, px[i], py[i], lerp(1, grow, ease(seg(t, wakes[i], wakes[i] + 0.15))), away);
     }
 
-    this.portalScene(ease(seg(t, POUR_OPEN_AT, POUR_OPEN_AT + POUR_OPEN_S)), seg(t, POUR_OPEN_AT - 0.2, POUR_OPEN_AT + POUR_OPEN_S), POUR_GIVE_UP, POUR_OPEN_AT + 0.3);
+    // The arms, the portal and its pulse
+    this.portalScene(seg(t, 0.2, OPEN_S), POUR_GIVE_UP, GRAVITY_AT);
+    const g = this.g;
+    // The gravity pulse, rippling out from the centre
+    const gp = seg(t, GRAVITY_AT, GRAVITY_AT + GRAVITY_PULSE_S);
+    if (gp > 0 && gp < 1) {
+      g.circle(s.cx, s.cy, s.ring * gp).stroke({ width: 3, color: OFF_WHITE, alpha: 0.85 * (1 - gp * 0.6) });
+      if (gp > 0.25) g.circle(s.cx, s.cy, s.ring * (gp - 0.25)).stroke({ width: 1.5, color: DATA_TYPES[0].color, alpha: 0.6 * (1 - gp) });
+    }
   }
 
-  /** Overlapping hours are pushed apart, and their closing speed mostly absorbed (sand, not marbles) */
+  /** Overlapping balls are pushed apart and bounce off each other. Hours the pulse hasn't woken yet stay exactly where they are. */
   private collideGrains(px: Float32Array, py: Float32Array, vx: Float32Array, vy: Float32Array, d0: number): void {
     const G = this.grid;
     const { count, start, fill, order, cell } = G;
     count.fill(0);
     for (let i = 0; i < this.n; i++) {
-      if (this.gone[i]) {
+      if (this.gone[i] || !this.state[i]) {
         cell[i] = -1;
         continue;
       }
@@ -740,7 +807,7 @@ export class Celebration {
       py[j] += ny * push;
       const closing = (vx[j] - vx[i]) * nx + (vy[j] - vy[i]) * ny;
       if (closing < 0) {
-        const k = -(1 + GRAIN_BOUNCE) * closing * 0.5;
+        const k = -(1 + BALL_BOUNCE) * closing * 0.5;
         vx[i] -= k * nx;
         vy[i] -= k * ny;
         vx[j] += k * nx;
@@ -788,28 +855,43 @@ export class Celebration {
     this.core(u, 0.8, 0.92, 0.94);
   }
 
-  /** Every hour flies into the digits of the new year count, holds, then sweeps into the dataset */
+  /**
+   * Every hour flies into the digits of the new year count and shimmers. Then
+   * the digits collapse inwards with a slight twist, breaking up straight away
+   * so the number never travels as readable text, and gather into the year's
+   * disc, which drops into the dataset.
+   */
   private number(u: number): void {
     const { s } = this;
     const [nx, ny, delay, ph] = this.p;
-    const shimmerOn = u > 0.4 && u < 0.74;
+    // The shimmer fades in once the digits have formed, and out before they gather
+    const shimmer = 0.18 * seg(u, 0.36, 0.44) * (1 - seg(u, NUMBER_GO - 0.08, NUMBER_GO));
     for (let i = 0; i < this.n; i++) {
+      // Fly into the digits
       const f = ease(seg(u, delay[i], delay[i] + 0.3));
       const dx = nx[i] - this.x0[i];
       const dy = ny[i] - this.y0[i];
       const bulge = Math.sin(Math.PI * f) * 0.12;
-      const xn = (nx[i] - this.minX) / this.spanX;
-      const o = ease(seg(u, 0.7 + 0.12 * xn, 0.88 + 0.1 * xn));
-      const x = lerp(this.x0[i] + dx * f - dy * bulge, s.tx, o);
-      const y = lerp(this.y0[i] + dy * f + dx * bulge, s.ty, o);
-      const shimmer = shimmerOn ? 0.82 + 0.18 * Math.sin(this.time * Math.PI + ph[i]) : 1;
-      this.set(i, x, y, lerp(lerp(1, this.numScale, f), 0.35, o), shimmer * (1 - seg(o, 0.85, 1)));
+      let x = this.x0[i] + dx * f - dy * bulge;
+      let y = this.y0[i] + dy * f + dx * bulge;
+      let alpha = 1 - shimmer * (0.5 + 0.5 * Math.sin(this.time * Math.PI + ph[i]));
+      // Collapse inwards with a slight twist, each at its own moment, fading into the disc
+      const e = ease(seg(u, NUMBER_GO + delay[i] * 0.3, NUMBER_GO + 0.1 + delay[i] * 0.3));
+      if (e > 0) {
+        const a = 0.6 * e;
+        const rx = (x - s.cx) * (1 - e);
+        const ry = (y - s.cy) * (1 - e);
+        x = s.cx + rx * Math.cos(a) - ry * Math.sin(a);
+        y = s.cy + rx * Math.sin(a) + ry * Math.cos(a);
+        alpha *= 1 - seg(e, 0.7, 1);
+      }
+      this.set(i, x, y, lerp(1, this.numScale, f), alpha);
     }
+    this.core(u, NUMBER_GO + 0.07, NUMBER_GO + 0.16, 0.86);
   }
 
   destroy(): void {
     this.root.destroy({ children: true });
-    this.trailHolder.destroy({ children: true });
     this.copyHolder.destroy({ children: true });
     this.trails?.forEach((t) => t.destroy(true));
   }

@@ -26,9 +26,8 @@ function ukOffset(ms: number): number {
   let off = offsets.get(key);
   if (off === undefined) {
     const p = ukParts.formatToParts(new Date(key * HOUR_MS));
-    const get = (t: string) => Number(p.find((x) => x.type === t)?.value ?? 0);
+    const get = (t: string) => Number(p.find((x) => x.type === t)!.value);
     off = Date.UTC(get('year'), get('month') - 1, get('day'), get('hour'), get('minute')) - key * HOUR_MS;
-    if (offsets.size > 20_000) offsets.clear();
     offsets.set(key, off);
   }
   return off;
@@ -71,7 +70,6 @@ function hourNode(hourIndex: number): number {
     mean = 0;
     for (let k = 0; k < 24; k++) mean += hashNormal(day * 24 + k);
     mean /= 24;
-    if (dayMeans.size > 5_000) dayMeans.clear();
     dayMeans.set(day, mean);
   }
   return hashNormal(hourIndex) - mean;
@@ -92,7 +90,7 @@ function wanderAt(local: number): number {
   const i = Math.floor(u);
   const s = (1 - Math.cos(Math.PI * (u - i))) / 2;
   const n = hourNode(i) * (1 - s) + hourNode(i + 1) * s;
-  return Math.max(0.2, 1 + v * SMOOTHING * n);
+  return 1 + v * SMOOTHING * n;
 }
 
 /** The daily and weekly pattern only, without the hourly wander */
@@ -109,7 +107,7 @@ export function rateFactor(ms: number): number {
 /**
  * Real time, so every visitor sees the same live state. The total starts from
  * the dataset size at FLOW.asOf and adds the modelled rate since then. In debug
- * mode the clock can run faster or jump forward; it never runs backwards.
+ * mode the clock can run faster; it never runs backwards.
  */
 export class LiveClock {
   private baseWall = Date.now();
@@ -129,35 +127,20 @@ export class LiveClock {
     return this.baseWall + (performance.now() - this.basePerf) * this.factor;
   }
 
-  get speed(): number {
-    return this.factor;
-  }
-
   setFactor(f: number): void {
     this.baseWall = this.now();
     this.basePerf = performance.now();
     this.factor = f;
   }
 
-  /** The fixed rate for the 15-minute step this moment falls in, so the shown rate matches the total */
-  private stepFactor(ms: number): number {
-    if (ms <= FLOW.asOfMs) return 1;
-    const start = FLOW.asOfMs + Math.floor((ms - FLOW.asOfMs) / STEP_MS) * STEP_MS;
-    return rateFactor(start + STEP_MS / 2);
-  }
-
-  /** Hours of recording arriving each second, right now */
+  /** Hours of recording arriving each second, right now: the fixed rate of this 15-minute step, so it matches the total */
   rate(): number {
-    return MEAN_HOURS_PER_SECOND * this.stepFactor(this.now());
+    const start = FLOW.asOfMs + Math.floor((this.now() - FLOW.asOfMs) / STEP_MS) * STEP_MS;
+    return MEAN_HOURS_PER_SECOND * rateFactor(start + STEP_MS / 2);
   }
 
+  /** Hours of recording in the dataset at a moment. Moments must only move forward, as the page's clock does. */
   totalAt(ms: number): number {
-    // Before the anchor, assume the average rate
-    if (ms <= FLOW.asOfMs) return FLOW.totalHours - (MEAN_HOURS_PER_SECOND * (FLOW.asOfMs - ms)) / 1000;
-    if (ms < this.sumAt) {
-      this.sumAt = FLOW.asOfMs;
-      this.sum = 0;
-    }
     while (this.sumAt + STEP_MS <= ms) {
       this.sum += (MEAN_HOURS_PER_SECOND * rateFactor(this.sumAt + STEP_MS / 2) * STEP_MS) / 1000;
       this.sumAt += STEP_MS;
@@ -170,7 +153,6 @@ export class LiveClock {
   total(): number {
     return this.totalAt(this.now());
   }
-
 
   /** Seconds since the page opened, on this clock */
   get secondsHere(): number {

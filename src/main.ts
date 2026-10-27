@@ -20,9 +20,6 @@ import { TEX_RADIUS } from './scene/shapes';
 import type { StageLabel } from './scene/types';
 import { YearScene } from './scene/year';
 
-// Tells the safeguard in index.html that the page's code has started
-(window as unknown as { __waveformStarted?: boolean }).__waveformStarted = true;
-
 const $ = <T extends HTMLElement = HTMLElement>(sel: string) => document.querySelector(sel) as T;
 const debugMode = new URLSearchParams(location.search).has('debug') || location.hash === '#debug';
 
@@ -196,7 +193,7 @@ async function boot(): Promise<void> {
   let w = Math.max(1, Math.round(stage.clientWidth));
   let h = Math.max(1, Math.round(stage.clientHeight));
   // The canvas spans the window width, so animations can use all of it; the picture sits centred
-  let cw = document.documentElement.clientWidth;
+  let cw = 0;
   let off = 0;
   const place = () => {
     cw = Math.max(w, document.documentElement.clientWidth);
@@ -305,17 +302,17 @@ async function boot(): Promise<void> {
     sync();
   }).observe(stage);
   document.addEventListener('visibilitychange', sync);
-  document.fonts?.ready.then(() => refreshLabels(true));
+  document.fonts.ready.then(() => refreshLabels(true));
 
   if (debugMode) {
     buildDebug($('#debug'), clock, scene, () => {
       relayout();
-      scene.enter(app.ticker.started);
+      scene.enter();
     });
   }
 
   // ---- First frame: the opening fill, then it plays
-  scene.enter(true);
+  scene.enter();
   window.setTimeout(() => labelsEl.classList.remove('is-hidden'), 350);
   app.render();
   sync();

@@ -4,7 +4,7 @@ An animated page showing 15,000 hours of waveform recordings a day flowing into 
 
 - **Minutes:** five streams, one per waveform. Each drop is one minute of recording, about ten a second in all. Each stream fills a ring that holds 1 hour of recording. A full ring fills in to a solid circle, which shrinks and flies to its place in the year.
 - **A year:** each finished hour flies into a big circle that holds 1 year of recording (8,760 hours). Faint dots are the hours still to come. It fills clockwise from 12 o'clock, a new dot every few seconds, and the white arc shows how much is done. A year of recording completes about every 14 hours.
-- **The dataset:** each small circle is 1 finished year of recording. The ringed slot is the year filling now, tied to the big circle like a magnifier.
+- **The dataset:** each small circle is 1 finished year of recording, laid out as one chain in a snake (rows alternate direction), newest first. The ringed slot at its head is the year filling now, tied to the big circle like a magnifier. When a year is finished it lands on the head, and the whole chain shifts along one place in a wave from newest to oldest, each year swelling as it steps, with years at the end of a row stepping down to the next. As the year's ring fades from white to the empty outline, the empty hours of the new year fade in with it.
 
 Row labels ("1 hour", "1 year", each "of recording") point at their rows. On narrow screens the hour rings shift right to make room, and the year label sits above the circle.
 
@@ -31,7 +31,7 @@ Add `#debug` (or `?debug`) to the address for:
 
 - **Speed:** real time, 10×, 100× or 1,000×. At 1,000× a year of recording fills in under a minute.
 - **Fill:** clockwise, or from the centre out.
-- **When a year completes:** Orbit, Portal, Pour, Spin out, Collider or Year count, plus a **Play year finale** button. It fills the rest of the current year quickly, plays the chosen finale into this year's slot, then sweeps back to where the year really is. The live clock, counts and dataset are never changed, and it works whether or not the picture is in view.
+- **When a year completes:** Orbit, Portal, Pour, Spin out, Collider or Year count, plus a **Play year finale** button. It fills the rest of the current year quickly, plays the chosen finale into the dataset's head, shows the dataset shift along with a stand-in year, then returns to now: the circle sweeps back to its real fill and the dataset is quietly put back as it really is. The live clock, counts and dataset are never changed, and it works whether or not the picture is in view.
 
 ## The data, and updating it
 
@@ -59,7 +59,7 @@ The live figures come from `src/flow.json`:
 To update:
 
 1. Edit `src/flow.json`.
-2. Run `npm run check:flow`. It checks the file and says what it had to correct. It then tests over four weeks that the live total never jumps or runs backwards, that it averages out to `hoursPerDay`, and that hourly totals vary by about `hourlyVariation`.
+2. Run `npm run check:flow`. It checks that every value is present and in range, saying plainly what is wrong if not. It then tests over four weeks, on your file and at the most extreme values allowed, that the live total never jumps or runs backwards, that it averages out to `hoursPerDay`, and that hourly totals vary by about `hourlyVariation`. The page itself reads the file as it is, so this check is what keeps a bad value from going live.
 3. Run `npm run build` (or `npm run build:single`) and deploy.
 
 Every figure in the page's text (headline, rates, footer date) comes from this file. Averages are shown rounded: to the nearest 500 from 10,000 hours, and to the nearest 100 from 1,000.
@@ -77,11 +77,11 @@ Two simplifications to know about:
 
 - `src/main.ts`: the page. Controls, live numbers, labels, debug panel, pausing.
 - `src/scene/year.ts`: the picture. Streams, hour rings, the year disc and the dataset.
-- `src/scene/celebration.ts`: the six year-complete animations. Portal and Pour share the ring, arms and portal drawing. Pour is real physics: gravity, hours colliding on a grid, and bounces off the ring and the magnifier arms. Collider draws long-exposure trails with two textures that take turns.
+- `src/scene/celebration.ts`: the six year-complete animations. Portal and Pour share the ring, arms and portal drawing. Pour is real physics: the ring opens as in Portal, a pulse switches gravity on, and every hour becomes a bouncy ball that collides with the others (on a grid, two passes a frame), the ring and the arms. Every finale describes the year's ring through `ring()` (how white it is, and any opening) and the scene draws it the same way for all of them: white while the year is whole, fading to the empty outline as it lands. The magnifier stays on the landing slot, then glides to the next one. Collider draws long-exposure trails with two textures that take turns, under the hours themselves, which are always drawn directly.
 - `scripts/simulate-finale.mjs` (`npm run sim:finale -- pour`): runs an animation's real code at a steady 60 frames a second and reports its timeline and cost per frame. Useful where software rendering runs far below real speed.
 - `src/clock.ts`: the live clock and dataset total, adding up the modelled rate (with its daily and weekly shape, in UK time) since `asOf`.
 - `src/flow.json`: the data. `scripts/check-flow.mjs` checks it.
-- `src/config.ts`: design settings, and the checks that tidy `flow.json` on load.
+- `src/config.ts`: design settings, and the data from `flow.json` (shares are scaled to add up to exactly 1).
 - `src/scene/pool.ts`, `path.ts`, `shapes.ts`, `quality.ts`, `src/ease.ts`, `src/format.ts`: small helpers.
 
 The year disc puts its 8,760 hours on a sunflower spiral, which spreads them evenly. Each spot is given a waveform in turn, keeping the five shares, which draws the spiral pattern. A new hour takes the next free spot of its own waveform, so all five keep pace and the filled part stays a clean wedge.
