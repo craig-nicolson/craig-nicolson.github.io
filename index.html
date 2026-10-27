@@ -1,29 +1,117 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="en-GB">
   <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Data Visualization</title>
-    <link rel="stylesheet" crossorigin href="/assets/style-DwQeCNsM.css">
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Waveform data, a year at a time</title>
+    <meta name="description" content="15,000 hours of waveform recordings a day, adding a year of recording every 14 hours to a dataset of over 6 million hours." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet" />
   </head>
   <body>
-    <div class="landing-page flex-column flex-center">
-      <h1 class="landing-header">Data Visualization Demo</h1>
-      <div class="landing-nav flex-wrap">
-        <a href="/ecg_single.html" class="btn-primary btn-ecg">ECG Single</a>
-        <a href="/ecg_multi.html" class="btn-primary btn-ecg">ECG Multi</a>
-        <a href="/signal_single.html" class="btn-primary btn-signal">Signal Single</a>
-        <a href="/signal_multi.html" class="btn-primary btn-signal">Signal Multi</a>
-        <a href="/data-calculator.html" class="btn-primary btn-data">Data Calculator</a>
-        <a href="/kumu.html" class="btn-primary">Kumu</a>
-        <a href="/wrapper.html" class="btn-primary">View All</a>
+    <header class="band band--navy site-header">
+      <div class="wrap site-header__inner">
+        <img class="logo" src="/brand/DataLoch_Logo_Light.png" alt="DataLoch" height="40" />
+        <p class="site-title">Waveform data volume</p>
       </div>
-      <p class="landing-description">
-        Select a visualization mode.
-        <strong class="btn-ecg">ECG modes</strong> display animated electrocardiogram traces with detailed controls.
-        <strong class="btn-signal">Signal modes</strong> display Three.js-based signal visualizations with different rendering approaches.
-        <strong class="btn-data">Data Calculator</strong> provides real-time data accumulation metrics and signal visualization tools.
-      </p>
-    </div>
+    </header>
+
+    <main>
+      <section class="band band--navy hero">
+        <div class="wrap">
+          <h1>Every day, <strong data-fill="perDay">15,000 hours</strong> of <strong>waveform recordings</strong> arrive, adding <strong>a year of recording</strong> every <strong data-fill="yearEvery">14 hours</strong> to a dataset of over <strong data-fill="dataset">6 million hours</strong>.</h1>
+          <p class="lede">Each drop is 1 minute of recording. Sixty drops make 1 hour, each hour becomes a dot in the big circle, which holds 1 year of recording, and every finished year joins the dataset as a small circle.</p>
+        </div>
+      </section>
+
+      <section class="band band--navy explorer" aria-labelledby="explorer-title">
+        <div class="wrap">
+          <h2 id="explorer-title" class="visually-hidden">Live data flow</h2>
+          <div class="debug" id="debug" hidden></div>
+
+          <div class="stage stage--tall" id="stage">
+            <canvas role="img" aria-label="Five streams of drops, each drop 1 minute of recording, fill five rings that each hold 1 hour of recording. Each finished hour flies into a large circle that holds 1 year of recording. Below it, small circles show every finished year in the dataset."></canvas>
+            <div class="stage-labels is-hidden" aria-hidden="true"></div>
+            <p class="stage-fallback" hidden>This picture needs WebGL, which this browser has turned off. The numbers below still update.</p>
+          </div>
+
+          <div class="stage-bar">
+            <p class="scale-note">Every time shown is a length of recording. Each drop is 1 minute, each dot 1 hour and each small circle 1 year. Faint dots are hours still to come, and a ripple marks each new hour as it lands.</p>
+            <div class="stage-actions">
+              <button class="btn" id="play-toggle" type="button">Pause</button>
+            </div>
+          </div>
+          <p class="motion-note" id="motion-note" hidden>The animation is paused because your device asks for reduced motion. Select Play to start it.</p>
+
+          <div class="readout">
+            <div class="totals">
+              <p class="total"><span class="total__num" id="total-hours">6,000,000</span> <span class="total__unit">hours of recording in the dataset</span></p>
+              <dl class="stats">
+                <div>
+                  <dt>Arriving now</dt>
+                  <dd id="arriving-now">10.4 minutes of recording a second</dd>
+                </div>
+                <div>
+                  <dt>Since you arrived</dt>
+                  <dd><span id="since-hours">0.0 hours of recording</span> <span class="dd-sub" id="since-time"></span></dd>
+                </div>
+                <div>
+                  <dt>Current year of recording</dt>
+                  <dd id="year-progress">0 of 8,760 hours</dd>
+                </div>
+                <div>
+                  <dt>Whole dataset</dt>
+                  <dd id="as-recording">0 years of recording</dd>
+                </div>
+              </dl>
+            </div>
+            <table class="legend">
+              <caption class="visually-hidden">Hours of recording by waveform</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Waveform</th>
+                  <th scope="col" class="num">Share</th>
+                  <th scope="col" class="num">Hours a day</th>
+                  <th scope="col" class="num">In the dataset</th>
+                </tr>
+              </thead>
+              <tbody id="legend-body"></tbody>
+            </table>
+          </div>
+          <p class="visually-hidden" aria-live="polite" id="live"></p>
+        </div>
+      </section>
+
+      <section class="band band--light about" aria-labelledby="about-title">
+        <div class="wrap">
+          <h2 id="about-title">How to read it</h2>
+          <p class="about__lede">Every time on this page is a length of recording: how long it would take to play back. Recordings arrive far faster than they play. A whole year of recording arrives about every <span data-fill="yearEvery">14 hours</span>.</p>
+          <div class="about__grid">
+            <div>
+              <h3>1 minute and 1 hour</h3>
+              <p>Each type has its own stream, and wider streams carry more. Every drop is 1 minute of recording, about <span data-fill="dropsPerSecond">10</span> a second in all. Sixty drops fill a ring: 1 hour of recording.</p>
+            </div>
+            <div>
+              <h3>1 year</h3>
+              <p>Each finished hour flies into the big circle, which holds 1 year of recording: 8,760 hours. It fills clockwise from the top, a new dot every few seconds. The white arc shows how full it is.</p>
+            </div>
+            <div>
+              <h3>The whole dataset</h3>
+              <p>Each small circle is 1 finished year of recording. The ringed space is the year filling now, and the lines show it is the big circle, shrunk to scale.</p>
+            </div>
+          </div>
+          <p class="numbers" id="numbers-text"></p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="band band--navy site-footer">
+      <div class="wrap">
+        <p>Illustrative only. Live figures are modelled from average rates, counted on from <span data-fill="anchor">6,000,000 hours on 21/10/2026</span>. Waveform names are typical ICU examples standing in for the real types.</p>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
