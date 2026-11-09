@@ -65,6 +65,11 @@ export const FLOW = {
   weekendFactor: flow.weekendFactor,
   /** Standard deviation of hourly totals around the pattern, as a share of it (0.08 = about ±8%) */
   hourlyVariation: flow.hourlyVariation,
+  /** Patients in the dataset at asOf, and how many more each day */
+  patients: flow.patients.atAsOf,
+  patientsPerDay: flow.patients.perDay,
+  /** Waveforms recorded at once, on average, while a patient is monitored: 70 hours of recording from 7 at once is 10 patient hours */
+  waveformsAtOnce: flow.patients.waveformsAtOnce,
 };
 
 /** Average hours of recording arriving each second */

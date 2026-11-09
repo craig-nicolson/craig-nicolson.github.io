@@ -43,6 +43,9 @@ function problemsIn(f, types) {
   range('daily.peakHour', f.daily?.peakHour, 0, 24);
   range('weekendFactor', f.weekendFactor, 0.5, 1.5);
   range('hourlyVariation', f.hourlyVariation, 0, 0.3);
+  range('patients.atAsOf', f.patients?.atAsOf, 0, Infinity);
+  range('patients.perDay', f.patients?.perDay, 0, Infinity);
+  range('patients.waveformsAtOnce', f.patients?.waveformsAtOnce, 1, 100);
   for (const t of types) range(`shares.${t}`, f.shares?.[t], 0, 1);
   for (const k of Object.keys(f.shares ?? {})) if (!types.includes(k)) out.push(`shares.${k} is not a type (the types are ${types.join(', ')})`);
   const sum = types.reduce((a, t) => a + (f.shares?.[t] ?? 0), 0);

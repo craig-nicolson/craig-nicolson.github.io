@@ -2,6 +2,11 @@
   "asOf": "2026-10-21T00:00:00+01:00",
   "totalHours": 6012501,
   "hoursPerDay": 15013,
+  "patients": {
+    "atAsOf": 11595,
+    "perDay": 15,
+    "waveformsAtOnce": 3.62
+  },
   "shares": {
     "ECG": 0.3972,
     "ABP": 0.3086,

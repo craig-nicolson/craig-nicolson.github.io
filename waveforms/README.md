@@ -43,6 +43,11 @@ The live figures come from `src/flow.json`:
   "asOf": "2026-10-21T00:00:00+01:00",
   "totalHours": 6012501,
   "hoursPerDay": 15013,
+  "patients": {
+    "atAsOf": 11595,
+    "perDay": 15,
+    "waveformsAtOnce": 3.62
+  },
   "shares": {
     "ECG": 0.3972,
     "ABP": 0.3086,
@@ -65,6 +70,8 @@ The live figures come from `src/flow.json`:
 
 - `asOf`, `totalHours`: the dataset's size at a set moment. The page counts on from there.
 - `hoursPerDay`: the average daily rate, ideally from the last 4–8 weeks. Refreshing it every month or two also tracks the seasons.
+- `patients`: the number of patients in the dataset at `asOf` (`atAsOf`) and how many more join each day (`perDay`). For sensitivity the page only ever shows it rounded down to the hundred, as "over 11,800", always strictly below the true count.
+  `waveformsAtOnce` is how many waveforms are recorded at once, on average, while a patient is monitored. It turns hours of recording into patient hours (10 hours on 7 waveforms is 70 hours of recording but 10 patient hours) for the "By patients" table: patients (with new patients a day), hours monitored, and recording and monitoring per patient. Those averages are shown to two significant figures, because exact averages would let anyone work the exact patient count back out of the totals.
 - `shares`: each type's share, matched by its short name. They are scaled to add up to 1, so rounded figures are fine. A missing type counts as 0.
 - `daily.swing`, `daily.peakHour`: how far the rate rises and falls through the day (0.12 means ±12%), and when it peaks, in UK time. At most ±50%.
 - `weekendFactor`: weekend rate compared with the weekly average (0.9 means 10% quieter), between 0.5 and 1.5. Weekdays make up the difference, so the weekly average stays `hoursPerDay`.

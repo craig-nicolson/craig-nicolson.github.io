@@ -111,6 +111,17 @@ b {
   border-top: 2px solid var(--band-light-rule);
 }
 
+a {
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.15em;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
 :focus-visible {
   outline: 3px solid var(--dl-gold);
   outline-offset: 2px;
@@ -383,6 +394,10 @@ b {
   font-weight: 700;
   line-height: 1.25;
   margin-bottom: 12px;
+}
+
+.figures table + h2 {
+  margin-top: 40px;
 }
 
 .data-table {

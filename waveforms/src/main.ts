@@ -1,7 +1,7 @@
 import './styles/main.css';
 import { Application, Graphics } from 'pixi.js';
 import { LiveClock } from './clock';
-import { DATA_TYPES, DEBUG_SPEEDS, FLOW, MEAN_HOURS_PER_SECOND, PAIRS_PER_SECOND, YEAR_HOURS } from './config';
+import { DATA_TYPES, DEBUG_SPEEDS, FLOW, PAIRS_PER_SECOND, YEAR_HOURS } from './config';
 import { Tweens } from './ease';
 import * as fmt from './format';
 import { Quality } from './scene/quality';
@@ -114,13 +114,8 @@ function fillText(): void {
     const v = fills[el.dataset.fill ?? ''];
     if (v) el.textContent = v;
   });
-  const parts = DATA_TYPES.map((t) => `${fmt.int(perDayOf(t.share))} of ${t.short}`);
-  $('#numbers-text').textContent =
-    `${fmt.int(perDay)} hours of recording on average: ${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}. ` +
-    `That works out at ${(MEAN_HOURS_PER_SECOND * 60).toFixed(1)} minutes of recording every second.`;
 }
 
-/** The live numbers under the picture. Works even if the picture can't be drawn. */
 /**
  * The live figures. Dataset totals count what the picture shows: each
  * waveform's hours, less any still filling in or flying in (`inFlight`), so
@@ -143,6 +138,16 @@ function bindReadout(clock: LiveClock, inFlight: (type: number) => number): () =
   const since = $('#since-hours');
   const sinceTime = $('#since-time');
   const years = $('#as-recording');
+  const patients = $('#patients');
+  const patientsTotal = $('#patients-total');
+  const patientHours = $('#patient-hours');
+  const perPatientRecording = $('#per-patient-recording');
+  const perPatientMonitored = $('#per-patient-monitored');
+  // Averages per patient to two significant figures, so the exact patient count can't be worked back out of them
+  const about = (n: number) => {
+    const step = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1);
+    return `~${fmt.int(Math.round(n / step) * step)} hours`;
+  };
   const time = $<HTMLTimeElement>('#now-time');
   const timeText = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   // Only touch the page when a value changes: this runs every frame
@@ -157,6 +162,15 @@ function bindReadout(clock: LiveClock, inFlight: (type: number) => number): () =
     roll(total, fmt.int(shown));
     byType.forEach((h, i) => roll(cells[i], fmt.int(h)));
     roll(years, fmt.yearsDaysHours(shown));
+    // Patients, for sensitivity only ever shown rounded down to the hundred, strictly below the true count
+    const people = Math.floor(FLOW.patients + (FLOW.patientsPerDay * (clock.now() - FLOW.asOfMs)) / 86_400_000);
+    const over = fmt.int(Math.floor((people - 1) / 100) * 100);
+    put(patients, over);
+    put(patientsTotal, `over ${over} (+${fmt.int(FLOW.patientsPerDay)} a day)`);
+    const monitored = shown / FLOW.waveformsAtOnce;
+    roll(patientHours, fmt.int(Math.floor(monitored)));
+    put(perPatientRecording, about(shown / people));
+    put(perPatientMonitored, about(monitored / people));
     put(now, `${(clock.rate() * 60).toFixed(1)} minutes of recording a second`);
     put(since, `${fmt.hours(T - clock.openTotal)} hours of recording`);
     put(sinceTime, `in ${fmt.duration(clock.secondsHere)}`);

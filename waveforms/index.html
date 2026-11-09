@@ -21,7 +21,7 @@
       <section class="intro">
         <div class="wrap">
           <h1>Waveform data, a year at a time</h1>
-          <p class="intro__text">The dataset holds <strong class="figure" id="total-hours">6,013,862</strong> hours of waveform recording. An average of <span data-fill="perDay">15,013 hours</span> more arrive each day, so a full year of recording is added roughly every <span data-fill="yearEvery">14 hours</span>.</p>
+          <p class="intro__text">The dataset holds <strong class="figure" id="total-hours">6,012,501</strong> hours of waveform recording from over <span class="figure" id="patients">12,100</span> patients. An average of <span data-fill="perDay">15,013 hours</span> more arrive each day, so a full year of recording is added roughly every <span data-fill="yearEvery">14 hours</span>.</p>
         </div>
       </section>
 
@@ -52,6 +52,15 @@
                 <tr><th scope="row">Whole dataset</th><td id="as-recording">0 years, 0 days and 0 hours</td></tr>
               </tbody>
             </table>
+            <h2>By patients</h2>
+            <table class="data-table data-table--pairs">
+              <tbody>
+                <tr><th scope="row">Patients</th><td id="patients-total">over 11,800 (+15 a day)</td></tr>
+                <tr><th scope="row">Hours monitored</th><td id="patient-hours">0</td></tr>
+                <tr><th scope="row">Recording per patient</th><td id="per-patient-recording">~0 hours</td></tr>
+                <tr><th scope="row">Monitoring per patient</th><td id="per-patient-monitored">~0 hours</td></tr>
+              </tbody>
+            </table>
           </div>
           <div>
             <h2>By waveform</h2>
@@ -76,8 +85,8 @@
           <dl class="notes__list">
             <dt>Length, not arrival time</dt>
             <dd>Every amount here is a length of recording: how long it would take to play back. Recordings arrive far faster than they play, which is why a year of recording arrives about every <span data-fill="yearEvery">14 hours</span>.</dd>
-            <dt>A typical day</dt>
-            <dd id="numbers-text"></dd>
+            <dt>Patient hours</dt>
+            <dd>A monitored patient is usually recorded on several waveforms at once, so hours of recording add up faster than hours of monitoring: 10 hours on 7 waveforms is 70 hours of recording but 10 patient hours. Averages per patient are shown to two significant figures.</dd>
             <dt>How the count is made</dt>
             <dd>The live figures are modelled from dynamic average rates observed in the real data pipeline.</dd>
             <dt>The five waveforms</dt>
@@ -91,7 +100,7 @@
               </ul>
             </dd>
             <dt>How it is stored</dt>
-            <dd>The underlying data is vast: <span class="figure" id="pairs">0</span> time-value pairs, stored in an efficient compressed format thanks to the work of the team at 3 Lead Analytics, who build AtriumDB.</dd>
+            <dd>The underlying data is vast: <span class="figure" id="pairs">0</span> time-value pairs, stored in an efficient compressed format thanks to the work of the team at <a href="https://3lead.ai/">3Lead</a>, who build <a href="https://github.com/LaussenLabs/atriumdb">AtriumDB</a>.</dd>
           </dl>
         </div>
       </section>
