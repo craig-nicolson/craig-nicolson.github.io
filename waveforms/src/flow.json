@@ -1,0 +1,22 @@
+{
+  "asOf": "2026-10-21T00:00:00+01:00",
+  "totalHours": 6012501,
+  "hoursPerDay": 15013,
+  "shares": {
+    "ECG": 0.3972,
+    "ABP": 0.3086,
+    "Pleth": 0.1914,
+    "Resp": 0.0611,
+    "CVP": 0.0417
+  },
+  "daily": {
+    "swing": 0.083,
+    "peakHour": 15.5
+  },
+  "weekendFactor": 0.947,
+  "hourlyVariation": 0.061,
+  "sampleRates": {
+    "256": 0.7,
+    "128": 0.3
+  }
+}

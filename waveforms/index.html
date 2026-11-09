@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Waveform data, a year at a time</title>
+    <meta name="description" content="15,000 hours of waveform recordings a day, adding a year of recording every 14 hours to a dataset of over 6 million hours." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;700&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <header class="masthead">
+      <div class="wrap masthead__inner">
+        <img class="logo" src="/brand/DataLoch_Logo_Light.png" alt="DataLoch" height="32" />
+        <p class="masthead__time"><time id="now-time"></time></p>
+      </div>
+    </header>
+
+    <main>
+      <section class="intro">
+        <div class="wrap">
+          <h1>Waveform data, a year at a time</h1>
+          <p class="intro__text">The dataset holds <strong class="figure" id="total-hours">6,013,862</strong> hours of waveform recording. An average of <span data-fill="perDay">15,013 hours</span> more arrive each day, so a full year of recording is added roughly every <span data-fill="yearEvery">14 hours</span>.</p>
+        </div>
+      </section>
+
+      <section class="explorer" aria-labelledby="explorer-title">
+        <div class="wrap">
+          <h2 id="explorer-title" class="visually-hidden">Live data flow</h2>
+          <p class="explainer">Each drop is a minute of recording. Drops fill the hour rings, hours fill the big circle of one year, and each full year joins the dataset below as a small white circle.</p>
+          <div class="debug" id="debug" hidden></div>
+
+          <div class="stage stage--tall" id="stage">
+            <canvas role="img" aria-label="Five streams of drops, each drop 1 minute of recording, fill five rings that each hold 1 hour of recording. Each finished hour flies into a large circle that holds 1 year of recording. Below it, small circles show every finished year in the dataset."></canvas>
+            <div class="stage-labels" aria-hidden="true"></div>
+            <p class="stage-fallback" hidden>This picture needs WebGL, which this browser has turned off. The numbers below still update.</p>
+          </div>
+
+          <p class="visually-hidden" aria-live="polite" id="live"></p>
+        </div>
+      </section>
+
+      <section class="figures" aria-label="Live figures">
+        <div class="wrap figures__inner">
+          <div>
+            <h2>Right now</h2>
+            <table class="data-table data-table--pairs">
+              <tbody>
+                <tr><th scope="row">Arriving</th><td id="arriving-now">10.4 minutes of recording a second</td></tr>
+                <tr><th scope="row">Since you opened this page</th><td><span class="line" id="since-hours">0.0 hours of recording</span><span class="line muted" id="since-time">in 0 seconds</span></td></tr>
+                <tr><th scope="row">Whole dataset</th><td id="as-recording">0 years, 0 days and 0 hours</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div>
+            <h2>By waveform</h2>
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">Waveform</th>
+                  <th scope="col" class="num">Share</th>
+                  <th scope="col" class="num">Hours a day</th>
+                  <th scope="col" class="num">In the dataset</th>
+                </tr>
+              </thead>
+              <tbody id="legend-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="notes" aria-labelledby="notes-title">
+        <div class="wrap notes__inner">
+          <h2 id="notes-title">About these figures</h2>
+          <dl class="notes__list">
+            <dt>Length, not arrival time</dt>
+            <dd>Every amount here is a length of recording: how long it would take to play back. Recordings arrive far faster than they play, which is why a year of recording arrives about every <span data-fill="yearEvery">14 hours</span>.</dd>
+            <dt>A typical day</dt>
+            <dd id="numbers-text"></dd>
+            <dt>How the count is made</dt>
+            <dd>The live figures are modelled from dynamic average rates observed in the real data pipeline.</dd>
+            <dt>The five waveforms</dt>
+            <dd>
+              <ul class="waveforms">
+                <li><strong>ECG</strong>, electrocardiogram: the heart's electrical activity.</li>
+                <li><strong>ABP</strong>, arterial blood pressure: pressure in an artery, measured beat by beat through an arterial line.</li>
+                <li><strong>Pleth</strong>, plethysmogram: the pulse of blood volume at the fingertip, from the pulse oximeter.</li>
+                <li><strong>Resp</strong>, respiratory rate: the breathing waveform, usually measured as changes in chest impedance.</li>
+                <li><strong>CVP</strong>, central venous pressure: pressure in the large veins close to the heart, through a central line.</li>
+              </ul>
+            </dd>
+            <dt>How it is stored</dt>
+            <dd>The underlying data is vast: <span class="figure" id="pairs">0</span> time-value pairs, stored in an efficient compressed format thanks to the work of the team at 3 Lead Analytics, who build AtriumDB.</dd>
+          </dl>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <div class="wrap">
+        <p>This page does not use real or live patient data, the figures and animations are illustrative.</p>
+      </div>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

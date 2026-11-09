@@ -1,0 +1,598 @@
+/* DataLoch tokens (style guide section 8), trimmed to what this page uses */
+:root {
+  --dl-navy: #334c61;
+  --dl-off-white: #faf7f7;
+  --dl-teal: #63bda3;
+  --dl-blue: #0087b5;
+  --dl-gold: #f59e17;
+  --dl-red: #e52147;
+  --dl-track-on-navy: rgb(250 247 247 / 0.1);
+  --dl-track-on-light: rgb(51 76 97 / 0.1);
+  --dl-other: rgb(250 247 247 / 0.3);
+  --dl-font: 'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+  --dl-ease: cubic-bezier(0.64, 0, 0, 1);
+  --dl-dur-pop: 730ms;
+  --dl-text-h1: 2.75rem;
+  --dl-text-h2: 2.1875rem;
+  --dl-text-h3: 1.75rem;
+  --dl-text-h4: 1.375rem;
+  --dl-text-body: 1.125rem;
+  --dl-text-label: 1rem;
+  --dl-text-small: 0.9375rem;
+
+  /* The light band follows the viewer's theme: off-white normally, navy in dark mode */
+  --band-light-bg: var(--dl-off-white);
+  --band-light-fg: var(--dl-navy);
+  --band-light-focus: var(--dl-blue);
+  --band-light-rule: transparent;
+
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--dl-navy);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --band-light-bg: var(--dl-navy);
+    --band-light-fg: var(--dl-off-white);
+    --band-light-focus: var(--dl-gold);
+    --band-light-rule: var(--dl-track-on-navy);
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --band-light-bg: var(--dl-navy);
+  --band-light-fg: var(--dl-off-white);
+  --band-light-focus: var(--dl-gold);
+  --band-light-rule: var(--dl-track-on-navy);
+  color-scheme: dark;
+}
+
+html {
+  scroll-padding-top: env(safe-area-inset-top, 0px);
+  -webkit-text-size-adjust: 100%;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  margin: 0;
+  background: var(--dl-navy);
+  color: var(--dl-off-white);
+  font-family: var(--dl-font);
+  font-weight: 400;
+  font-size: var(--dl-text-body);
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dd {
+  margin: 0;
+}
+
+strong,
+b {
+  font-weight: 700;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.wrap {
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
+/* ---- Light surfaces follow the viewer's theme */
+.notes {
+  background: var(--band-light-bg);
+  color: var(--band-light-fg);
+  border-top: 2px solid var(--band-light-rule);
+}
+
+:focus-visible {
+  outline: 3px solid var(--dl-gold);
+  outline-offset: 2px;
+}
+
+.notes :focus-visible {
+  outline-color: var(--band-light-focus);
+}
+
+/* ---- Masthead */
+.masthead__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 24px;
+  padding-block: 20px;
+  border-bottom: 2px solid var(--dl-track-on-navy);
+}
+
+.logo {
+  display: block;
+  height: 32px;
+  width: auto;
+}
+
+.masthead__time {
+  margin-left: auto;
+  font-size: var(--dl-text-small);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Intro */
+.intro {
+  padding-block: 56px 8px;
+}
+
+.intro h1 {
+  font-size: var(--dl-text-h1);
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+
+.intro__text {
+  max-width: 34em;
+  margin-top: 20px;
+  font-size: var(--dl-text-h4);
+  line-height: 1.4;
+}
+
+.figure {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Live numbers refresh like a counter: a changed digit rises a touch into place as it fades in */
+.digit {
+  display: inline-block;
+}
+
+.is-rolling {
+  animation: digit-roll 350ms cubic-bezier(0.64, 0, 0, 1);
+}
+
+@keyframes digit-roll {
+  from {
+    transform: translateY(0.18em);
+    opacity: 0.15;
+  }
+}
+
+/* ---- Controls */
+.explorer {
+  padding-bottom: 64px;
+  /* The canvas is as wide as the window; never let it cause sideways scrolling */
+  overflow-x: clip;
+}
+
+.control-label {
+  font-size: var(--dl-text-small);
+}
+
+.pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pill,
+.btn {
+  min-height: 48px;
+  padding: 0 24px;
+  border: 2px solid var(--dl-off-white);
+  border-radius: 9999px;
+  background: transparent;
+  color: var(--dl-off-white);
+  font: 700 var(--dl-text-label) / 1.2 var(--dl-font);
+  cursor: pointer;
+  transition:
+    background-color 250ms var(--dl-ease),
+    color 250ms var(--dl-ease);
+}
+
+.pill:hover,
+.btn:hover {
+  background: var(--dl-track-on-navy);
+}
+
+.pill[aria-pressed='true'] {
+  background: var(--dl-off-white);
+  color: var(--dl-navy);
+}
+
+.pill[aria-pressed='true']:hover {
+  background: rgb(250 247 247 / 0.85);
+}
+
+.btn {
+  min-width: 104px;
+}
+
+/* ---- Stage */
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  margin-top: 32px;
+}
+
+.stage--tall {
+  aspect-ratio: 4 / 5;
+  max-width: 640px;
+  margin-inline: auto;
+}
+
+.stage canvas {
+  /* Spans the window width (placed by script) so animations can use all of it */
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: block;
+  pointer-events: none;
+}
+
+.stage-labels {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Each label fades in with the part of the picture it labels (timings from the scene) */
+@keyframes stage-label-in {
+  from {
+    opacity: 0;
+  }
+}
+
+.stage-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: grid;
+  font-size: var(--dl-text-label);
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.stage-label--center {
+  text-align: center;
+}
+
+.stage-label--right {
+  text-align: right;
+}
+
+.stage-label strong {
+  font-weight: 700;
+}
+
+.stage-label span {
+  font-size: var(--dl-text-small);
+}
+
+.stage-label--row {
+  text-align: right;
+}
+
+.stage-label--row.stage-label--left {
+  text-align: left;
+}
+
+.stage-label--tier {
+  font-size: var(--dl-text-label);
+}
+
+.stage-fallback[hidden] {
+  display: none;
+}
+
+.stage-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  text-align: center;
+}
+
+.explainer {
+  max-width: 640px;
+  margin: 32px auto 0;
+  font-size: var(--dl-text-small);
+}
+
+/* The tooltip over the year: a small extra, above and to the right of the pointer */
+.tip {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  padding: 5px 8px;
+  border-radius: 6px;
+  background: var(--dl-off-white);
+  color: var(--dl-navy);
+  font-size: 0.8125rem;
+  line-height: 1.3;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tip[hidden] {
+  display: none;
+}
+
+/* A waveform's full name at the top right of the year while it is in focus, marked in its colour */
+.signal-name {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding-left: 7px;
+  border-left: 3px solid var(--signal, var(--dl-off-white));
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.25;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 150ms linear;
+}
+
+.signal-name.is-shown {
+  opacity: 1;
+}
+
+/* ---- Live figures */
+.figures {
+  padding-block: 56px 72px;
+}
+
+.figures__inner {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 40px 72px;
+  align-items: start;
+}
+
+.figures h2 {
+  font-size: var(--dl-text-h4);
+  font-weight: 700;
+  line-height: 1.25;
+  margin-bottom: 12px;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--dl-text-label);
+  font-variant-numeric: tabular-nums;
+}
+
+.data-table th,
+.data-table td {
+  padding: 10px 0;
+  text-align: left;
+  vertical-align: baseline;
+  border-top: 2px solid var(--dl-track-on-navy);
+}
+
+.data-table thead th {
+  padding-top: 0;
+  border-top: 0;
+  font-size: var(--dl-text-small);
+  font-weight: 400;
+}
+
+.data-table tbody th {
+  font-weight: 400;
+}
+
+.data-table td {
+  font-weight: 700;
+  text-align: right;
+  padding-left: 16px;
+}
+
+.data-table .num {
+  text-align: right;
+  padding-left: 16px;
+}
+
+.muted {
+  font-weight: 400;
+  font-size: var(--dl-text-small);
+}
+
+.data-table .line {
+  display: block;
+}
+
+/* Fixed columns, so values changing width (9 seconds to 10, say) never move anything */
+.data-table--pairs {
+  table-layout: fixed;
+}
+
+.data-table--pairs th {
+  width: 42%;
+}
+
+.name-short {
+  display: none;
+}
+
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 10px;
+  border-radius: 50%;
+  vertical-align: 0;
+}
+
+.debug {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.debug[hidden] {
+  display: none;
+}
+
+.debug__group {
+  display: grid;
+  gap: 8px;
+}
+
+/* ---- About these figures */
+.notes {
+  padding-block: 64px 88px;
+}
+
+.notes__inner {
+  display: grid;
+  /* The notes column is wide enough for each waveform's line to fit on one line at 1280 pixels */
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2.5fr);
+  gap: 24px 72px;
+}
+
+.notes h2 {
+  font-size: var(--dl-text-h3);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.notes__list {
+  display: grid;
+  gap: 4px;
+  max-width: 43em;
+}
+
+.notes__list dt {
+  font-weight: 700;
+}
+
+.notes__list dt:not(:first-child) {
+  margin-top: 20px;
+}
+
+.waveforms {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ---- Footer */
+.site-footer {
+  padding-block: 28px;
+  font-size: var(--dl-text-small);
+}
+
+/* ---- Smaller screens */
+@media (max-width: 860px) {
+  .figures__inner,
+  .notes__inner {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 700px) {
+  .stage {
+    aspect-ratio: 9 / 16;
+    max-height: 88svh;
+  }
+}
+
+@media (max-width: 600px) {
+  .wrap {
+    padding-inline: 16px;
+  }
+
+  body {
+    font-size: 1.0625rem;
+  }
+
+  .intro {
+    padding-top: 40px;
+  }
+
+  .intro h1 {
+    font-size: 2rem;
+  }
+
+  .intro__text {
+    font-size: 1.1875rem;
+  }
+
+  .notes h2 {
+    font-size: 1.5rem;
+  }
+
+  /* Label above value, so long values don't wrap beside their labels */
+  .data-table--pairs tr {
+    display: grid;
+    gap: 2px;
+    padding-block: 10px;
+    border-top: 2px solid var(--dl-track-on-navy);
+  }
+
+  .data-table--pairs th,
+  .data-table--pairs td {
+    width: auto;
+    padding: 0;
+    border: 0;
+    text-align: left;
+  }
+
+  .name-full {
+    display: none;
+  }
+
+  .name-short {
+    display: inline;
+  }
+
+  .stage-label {
+    font-size: 0.9375rem;
+  }
+
+  .stage-label span {
+    font-size: 0.875rem;
+  }
+
+  .figures,
+  .notes {
+    padding-block: 40px 56px;
+  }
+
+  .pill,
+  .btn {
+    padding: 0 18px;
+  }
+}
