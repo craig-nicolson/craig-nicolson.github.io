@@ -331,9 +331,11 @@ a:hover {
 }
 
 .explainer {
-  max-width: 640px;
+  max-width: 651px;
   margin: 32px auto 0;
   font-size: var(--dl-text-small);
+  text-align: center;
+  text-wrap: balance;
 }
 
 /* The tooltip over the year: a small extra, above and to the right of the pointer */

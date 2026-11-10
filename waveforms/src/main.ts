@@ -141,13 +141,15 @@ function bindReadout(clock: LiveClock, inFlight: (type: number) => number): () =
   const patients = $('#patients');
   const patientsTotal = $('#patients-total');
   const patientHours = $('#patient-hours');
-  const perPatientRecording = $('#per-patient-recording');
-  const perPatientMonitored = $('#per-patient-monitored');
-  // Averages per patient to two significant figures, so the exact patient count can't be worked back out of them
+  const introMonitored = $('#intro-monitored');
+  // Averages per patient to two significant figures, from the model's continuous patient count: smooth,
+  // with no step when the rounded count moves up a hundred, and too coarse to work the count back out of
   const about = (n: number) => {
     const step = 10 ** Math.max(0, Math.floor(Math.log10(n)) - 1);
     return `~${fmt.int(Math.round(n / step) * step)} hours`;
   };
+  const perPatientRecording = $('#per-patient-recording');
+  const perPatientMonitored = $('#per-patient-monitored');
   const time = $<HTMLTimeElement>('#now-time');
   const timeText = new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', hour: '2-digit', minute: '2-digit', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
   // Only touch the page when a value changes: this runs every frame
@@ -162,13 +164,14 @@ function bindReadout(clock: LiveClock, inFlight: (type: number) => number): () =
     roll(total, fmt.int(shown));
     byType.forEach((h, i) => roll(cells[i], fmt.int(h)));
     roll(years, fmt.yearsDaysHours(shown));
-    // Patients, for sensitivity only ever shown rounded down to the hundred, strictly below the true count
-    const people = Math.floor(FLOW.patients + (FLOW.patientsPerDay * (clock.now() - FLOW.asOfMs)) / 86_400_000);
-    const over = fmt.int(Math.floor((people - 1) / 100) * 100);
-    put(patients, over);
-    put(patientsTotal, `over ${over} (+${fmt.int(FLOW.patientsPerDay)} a day)`);
-    const monitored = shown / FLOW.waveformsAtOnce;
-    roll(patientHours, fmt.int(Math.floor(monitored)));
+    // Patients, for sensitivity only ever shown rounded down to the hundred, strictly below the count
+    const people = FLOW.patients + (FLOW.patientsPerDay * (clock.now() - FLOW.asOfMs)) / 86_400_000;
+    const rounded = Math.floor((Math.floor(people) - 1) / 100) * 100;
+    put(patients, fmt.int(rounded));
+    put(patientsTotal, `over ${fmt.int(rounded)} (+${fmt.int(FLOW.patientsPerDay)} a day)`);
+    const monitored = Math.floor(shown / FLOW.waveformsAtOnce);
+    roll(introMonitored, fmt.int(monitored));
+    roll(patientHours, fmt.int(monitored));
     put(perPatientRecording, about(shown / people));
     put(perPatientMonitored, about(monitored / people));
     put(now, `${(clock.rate() * 60).toFixed(1)} minutes of recording a second`);

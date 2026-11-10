@@ -21,14 +21,14 @@
       <section class="intro">
         <div class="wrap">
           <h1>Waveform data, a year at a time</h1>
-          <p class="intro__text">The dataset holds <strong class="figure" id="total-hours">6,012,501</strong> hours of waveform recording from over <span class="figure" id="patients">12,100</span> patients. An average of <span data-fill="perDay">15,013 hours</span> more arrive each day, so a full year of recording is added roughly every <span data-fill="yearEvery">14 hours</span>.</p>
+          <p class="intro__text">The dataset covers <strong class="figure" id="intro-monitored">1,321,304</strong> hours of patient monitoring, from over <span class="figure" id="patients">11,900</span> patients. This totals <strong class="figure" id="total-hours">6,324,309</strong> hours of waveform recording, with an average of <span data-fill="perDay">15,013 hours</span> more arriving each day.</p>
         </div>
       </section>
 
       <section class="explorer" aria-labelledby="explorer-title">
         <div class="wrap">
           <h2 id="explorer-title" class="visually-hidden">Live data flow</h2>
-          <p class="explainer">Each drop is a minute of recording. Drops fill the hour rings, hours fill the big circle of one year, and each full year joins the dataset below as a small white circle.</p>
+          <p class="explainer">Each drop is 1 minute of recording. Drops flow into the 1 hour of recording rings. Full hour rings drop into the 1 year of recording. Complete years of recording join the full dataset below as a small white circle.</p>
           <div class="debug" id="debug" hidden></div>
 
           <div class="stage stage--tall" id="stage">
@@ -86,7 +86,7 @@
             <dt>Length, not arrival time</dt>
             <dd>Every amount here is a length of recording: how long it would take to play back. Recordings arrive far faster than they play, which is why a year of recording arrives about every <span data-fill="yearEvery">14 hours</span>.</dd>
             <dt>Patient hours</dt>
-            <dd>A monitored patient is usually recorded on several waveforms at once, so hours of recording add up faster than hours of monitoring: 10 hours on 7 waveforms is 70 hours of recording but 10 patient hours. Averages per patient are shown to two significant figures.</dd>
+            <dd>Monitored patients usually have several waveforms recorded at once, meaning hours of recording add up faster than hours of monitoring. For example: 10 hours of 7 waveforms produces 70 hours of recording, but is counted as 10 patient hours.</dd>
             <dt>How the count is made</dt>
             <dd>The live figures are modelled from dynamic average rates observed in the real data pipeline.</dd>
             <dt>The five waveforms</dt>

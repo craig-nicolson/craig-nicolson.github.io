@@ -5,7 +5,7 @@
   "patients": {
     "atAsOf": 11595,
     "perDay": 15,
-    "waveformsAtOnce": 3.62
+    "waveformsAtOnce": 4.786
   },
   "shares": {
     "ECG": 0.3972,
