@@ -56,9 +56,9 @@
             <table class="data-table data-table--pairs">
               <tbody>
                 <tr><th scope="row">Patients</th><td id="patients-total">over 11,800 (+15 a day)</td></tr>
-                <tr><th scope="row">Hours monitored</th><td id="patient-hours">0</td></tr>
-                <tr><th scope="row">Recording per patient</th><td id="per-patient-recording">~0 hours</td></tr>
-                <tr><th scope="row">Monitoring per patient</th><td id="per-patient-monitored">~0 hours</td></tr>
+                <tr><th scope="row">Patient hours</th><td id="patient-hours">0</td></tr>
+                <tr><th scope="row">Average hours per patient</th><td id="per-patient-monitored">~0 hours</td></tr>
+                <tr><th scope="row">Recording hours per patient</th><td id="per-patient-recording">~0 hours</td></tr>
               </tbody>
             </table>
           </div>
@@ -83,10 +83,12 @@
         <div class="wrap notes__inner">
           <h2 id="notes-title">About these figures</h2>
           <dl class="notes__list">
-            <dt>Length, not arrival time</dt>
-            <dd>Every amount here is a length of recording: how long it would take to play back. Recordings arrive far faster than they play, which is why a year of recording arrives about every <span data-fill="yearEvery">14 hours</span>.</dd>
+            <dt>Hours of data</dt>
+            <dd>Hours on this page measure data, not time on the clock: how long it would take to play back. Data arrives far faster than that, so a full year of recording is added roughly every <span data-fill="yearEvery">14 hours</span>.</dd>
+            <dt>Recording hours</dt>
+            <dd>Hours of waveform data, with each waveform its own stream. 10 hours of monitoring with 7 waveforms is 70 recording hours.</dd>
             <dt>Patient hours</dt>
-            <dd>Monitored patients usually have several waveforms recorded at once, meaning hours of recording add up faster than hours of monitoring. For example: 10 hours of 7 waveforms produces 70 hours of recording, but is counted as 10 patient hours.</dd>
+            <dd>Hours of monitoring, each counted once however many waveforms are recorded. The same 10 hours is 10 patient hours.</dd>
             <dt>How the count is made</dt>
             <dd>The live figures are modelled from dynamic average rates observed in the real data pipeline.</dd>
             <dt>The five waveforms</dt>
